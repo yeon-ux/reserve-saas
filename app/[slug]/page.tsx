@@ -1,8 +1,17 @@
 "use client";
 
-import { calculateFinalSlots, WorkConfig, TimeRange, ReservationEvent } from "@/lib/filtering";
+import { useState, useEffect } from "react";
+import { supabase } from "../../lib/supabase";
+import { calculateFinalSlots, WorkConfig, TimeRange, ReservationEvent } from "../../lib/filtering";
 import { format, addDays, isSameDay, getDay } from "date-fns";
 import { ko } from "date-fns/locale";
+
+// AdSense용 더미 컴포넌트 (실제 구현 시 교체 필요)
+const AdSenseBanner = ({ client, slot }: { client: string; slot: string }) => (
+  <div className="p-4 bg-slate-100 text-[10px] text-slate-400 text-center uppercase tracking-widest font-bold">
+    Advertisement
+  </div>
+);
 
 export default function ReservationPage({ params }: { params: { slug: string } }) {
   const [partner, setPartner] = useState<any>(null);

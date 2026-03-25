@@ -1,11 +1,6 @@
 "use client";
-
-import { useState } from "react";
-
-type Holiday = { id: string; date: string; label: string; isActive: boolean };
-
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "../../lib/supabase";
 
 type Holiday = { id: string; holiday_date: string; label: string; is_active: boolean };
 
