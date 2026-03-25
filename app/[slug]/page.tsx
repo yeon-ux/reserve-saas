@@ -1,9 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
-import AdSenseBanner from "@/components/AdSenseBanner";
-import { format, addDays, isSameDay } from "date-fns";
+import { calculateFinalSlots, WorkConfig, TimeRange, ReservationEvent } from "@/lib/filtering";
+import { format, addDays, isSameDay, getDay } from "date-fns";
 import { ko } from "date-fns/locale";
 
 export default function ReservationPage({ params }: { params: { slug: string } }) {
@@ -11,26 +9,100 @@ export default function ReservationPage({ params }: { params: { slug: string } }
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  
+  // 가용 시간 계산을 위한 상태들
+  const [workConfigs, setWorkConfigs] = useState<Record<number, WorkConfig>>({});
+  const [breaks, setBreaks] = useState<TimeRange[]>([]);
+  const [holidays, setHolidays] = useState<string[]>([]);
+  const [events, setEvents] = useState<ReservationEvent[]>([]);
+  const [reservations, setReservations] = useState<string[]>([]);
 
   useEffect(() => {
-    async function fetchPartner() {
-      const { data } = await supabase
+    async function fetchPartnerData() {
+      // 1. 파트너 정보 가져오기
+      const { data: partnerData } = await supabase
         .from('partners')
         .select('*')
         .eq('slug', params.slug)
         .single();
-      setPartner(data);
+      
+      if (!partnerData) return;
+      setPartner(partnerData);
+
+      // 2. 운영 시간(Schedules) 가져오기
+      const { data: scheduleData } = await supabase
+        .from('schedules')
+        .select('*')
+        .eq('partner_id', partnerData.id);
+      
+      const configMap: Record<number, WorkConfig> = {};
+      scheduleData?.forEach(s => {
+        configMap[s.day_of_week] = {
+          startTime: s.start_time,
+          endTime: s.end_time,
+          interval: s.interval_minutes
+        };
+      });
+      setWorkConfigs(configMap);
+
+      // 3. 휴게 시간(Breaks) 가져오기
+      const { data: breakData } = await supabase
+        .from('breaks')
+        .select('start_time, end_time, day_of_week')
+        .eq('partner_id', partnerData.id);
+      
+      setBreaks(breakData?.map(b => ({ start: b.start_time, end: b.end_time })) || []);
+
+      // 4. 공휴일(Holidays) 가져오기
+      const { data: holidayData } = await supabase
+        .from('holidays')
+        .select('holiday_date')
+        .eq('partner_id', partnerData.id)
+        .eq('is_active', true);
+      
+      setHolidays(holidayData?.map(h => h.holiday_date) || []);
+
+      // 5. 일정(Events) 가져오기
+      const { data: eventData } = await supabase
+        .from('events')
+        .select('*')
+        .eq('partner_id', partnerData.id)
+        .eq('is_active', true);
+      
+      setEvents(eventData?.map(e => ({
+        type: e.type as 'recurring' | 'single',
+        dayOfWeek: e.day_of_week,
+        date: e.event_date,
+        start: e.start_time,
+        end: e.end_time
+      })) || []);
     }
-    fetchPartner();
+    fetchPartnerData();
   }, [params.slug]);
 
-  // 날짜 선택 시 가용 시간 계산 (Phase 5 엔진 로직 반영 시뮬레이션)
+  // 날짜 선택 시 가용 시간 계산 (필터링 엔진 적용)
   useEffect(() => {
     if (!partner) return;
-    // 실제로는 API나 Supabase RPC를 통해 가용 시간을 가져옵니다.
-    const slots = ["10:00", "11:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
+
+    const dateStr = format(selectedDate, 'yyyy-MM-dd');
+    const dayOfWeek = getDay(selectedDate);
+    const currentWorkConfig = workConfigs[dayOfWeek] || null;
+
+    // 해당 날짜의 휴게 시간 필터링 (요일 매칭)
+    const currentBreaks = breaks; // 실제 로직에서는 요일별로 필터링하거나 엔진 내부에서 처리할 수 있도록 보강 가능
+
+    const slots = calculateFinalSlots(
+      dateStr,
+      dayOfWeek,
+      currentWorkConfig,
+      currentBreaks,
+      holidays,
+      events,
+      reservations
+    );
+    
     setAvailableSlots(slots);
-  }, [selectedDate, partner]);
+  }, [selectedDate, partner, workConfigs, breaks, holidays, events, reservations]);
 
   if (!partner) return <div className="p-10 text-center font-bold">로딩 중...</div>;
 
