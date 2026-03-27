@@ -1,5 +1,10 @@
 import type { Metadata } from "next";
+import { Outfit } from "next/font/google";
 import "./globals.css";
+
+const outfit = Outfit({ subsets: ["latin"] });
+
+export const runtime = "edge";
 
 export const metadata: Metadata = {
   title: "스마트 예약 플랫폼",
@@ -16,7 +21,7 @@ export default function RootLayout({
       <head>
         <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-xxxxxxxxxxxxxxxx" crossOrigin="anonymous"></script>
       </head>
-      <body>{children}</body>
+      <body className={outfit.className}>{children}</body>
     </html>
   );
 }
