@@ -3,6 +3,7 @@ export const runtime = "edge";
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { useRouter } from "next/navigation";
+import { Sparkles, Globe, User, Lock, ArrowRight, CheckCircle2, XCircle } from "lucide-react";
 
 export default function SignupPage() {
   const [slug, setSlug] = useState("");
@@ -13,7 +14,6 @@ export default function SignupPage() {
   const [errorMsg, setErrorMsg] = useState("");
   const router = useRouter();
 
-  // 슬러그 실시간 입력을 처리하고 중복 확인
   useEffect(() => {
     if (slug.length < 2) {
       setIsAvailable(null);
@@ -27,7 +27,6 @@ export default function SignupPage() {
         .eq("slug", slug.toLowerCase())
         .single();
       
-      // PGRST116: Results not found (사용 가능)
       if (error) {
         if (error.code === "PGRST116") {
           setIsAvailable(true);
@@ -49,7 +48,6 @@ export default function SignupPage() {
     setLoading(true);
     setErrorMsg("");
 
-    // 1. Supabase Auth 회원가입
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
@@ -62,12 +60,11 @@ export default function SignupPage() {
     }
 
     if (authData.user) {
-      // 2. Partners 프로필 생성
       const { error: profileError } = await supabase.from("partners").insert([
         {
           id: authData.user.id,
           slug: slug.toLowerCase(),
-          name: slug, // 초기 이름은 슬러그로 설정
+          name: slug,
           is_pro: false
         },
       ]);
@@ -76,59 +73,103 @@ export default function SignupPage() {
         setErrorMsg(`프로필 생성 오류: ${profileError.message}`);
         setLoading(false);
       } else {
-        // 성공 시 어드민으로 이동
         router.push("/admin/schedule");
       }
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50">
-      <div className="w-full max-w-md bg-white p-10 rounded-[40px] shadow-2xl shadow-slate-200">
-        <h1 className="text-3xl font-black mb-2">시작하기</h1>
-        <p className="text-slate-400 mb-8 font-medium">예약 페이지의 주소가 될 별칭을 입력하세요.</p>
-        
-        <div className="space-y-4">
-          <div>
-            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Reservation URL</label>
-            <div className={`flex items-center bg-slate-50 rounded-2xl p-4 mt-1 border ${isAvailable === true ? 'border-green-400' : isAvailable === false ? 'border-red-400' : 'border-slate-100'}`}>
+    <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50 relative overflow-hidden font-['Outfit']">
+      {/* Background Decorative Blobs */}
+      <div className="absolute top-[-10%] right-[-10%] w-[30%] h-[30%] bg-indigo-100 rounded-full blur-[100px]" />
+      <div className="absolute bottom-[-10%] left-[-10%] w-[30%] h-[30%] bg-violet-100 rounded-full blur-[100px]" />
+
+      <div className="w-full max-w-xl glass-card p-12 rounded-[48px] relative z-10 shadow-2xl shadow-indigo-100">
+        <header className="mb-10">
+          <div className="inline-flex items-center space-x-2 px-3 py-1 bg-indigo-50 rounded-full text-indigo-600 font-bold text-xs mb-4">
+            <Sparkles size={14} />
+            <span>회원가입</span>
+          </div>
+          <h1 className="text-4xl font-black text-slate-900 tracking-tight mb-3">나만의 예약 페이지 만들기</h1>
+          <p className="text-slate-400 font-medium">단 1분 만에 자신만의 예약 링크를 생성하세요.</p>
+        </header>
+
+        <div className="space-y-6">
+          <div className="group">
+            <label className="text-sm font-bold text-slate-400 mb-2 block ml-1 flex items-center">
+              <Globe size={14} className="mr-1.5 text-slate-300" />
+              Reservation URL
+            </label>
+            <div className={`flex items-center bg-white border-2 rounded-2xl p-4 transition-all ${isAvailable === true ? 'border-green-200 bg-green-50/20' : isAvailable === false ? 'border-red-200 bg-red-50/20' : 'border-slate-100 focus-within:border-indigo-500'}`}>
               <span className="text-slate-400 font-bold mr-1">reserve.smarthow.net/</span>
               <input 
                 type="text" 
                 value={slug}
                 onChange={(e) => setSlug(e.target.value.replace(/[^a-z0-9-]/g, ""))}
-                placeholder="kim" 
-                className="bg-transparent border-none outline-none font-bold text-slate-900 flex-1" 
+                placeholder="별칭 입력" 
+                className="bg-transparent border-none outline-none font-black text-slate-900 flex-1 placeholder:text-slate-200" 
+              />
+              {isAvailable === true && <CheckCircle2 className="text-green-500" size={20} />}
+              {isAvailable === false && <XCircle className="text-red-500" size={20} />}
+            </div>
+            {isAvailable === true && <p className="text-xs text-green-600 font-bold mt-2 ml-1">멋진 주소네요! 사용 가능합니다.</p>}
+            {isAvailable === false && <p className="text-xs text-red-600 font-bold mt-2 ml-1">이미 사용 중이거나 연결 오류가 발생했습니다.</p>}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-bold text-slate-400 mb-2 block ml-1 flex items-center">
+                <User size={14} className="mr-1.5 text-slate-300" />
+                이메일
+              </label>
+              <input 
+                type="email" 
+                placeholder="example@mail.com" 
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full p-4 bg-white border-2 border-slate-100 rounded-2xl focus:border-indigo-500 outline-none font-black text-slate-900 transition-all" 
               />
             </div>
-            {isAvailable === true && <p className="text-[10px] text-green-500 font-bold mt-1 ml-1">멋진 주소네요! 사용 가능합니다.</p>}
-            {isAvailable === false && <p className="text-[10px] text-red-500 font-bold mt-1 ml-1">이미 사용 중인 주소입니다.</p>}
+            <div>
+              <label className="text-sm font-bold text-slate-400 mb-2 block ml-1 flex items-center">
+                <Lock size={14} className="mr-1.5 text-slate-300" />
+                비밀번호
+              </label>
+              <input 
+                type="password" 
+                placeholder="••••••••" 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full p-4 bg-white border-2 border-slate-100 rounded-2xl focus:border-indigo-500 outline-none font-black text-slate-900 transition-all" 
+              />
+            </div>
           </div>
           
-          <input 
-            type="email" 
-            placeholder="이메일 주소" 
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full p-5 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-medium" 
-          />
-          <input 
-            type="password" 
-            placeholder="비밀번호" 
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full p-5 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-medium" 
-          />
-          
-          {errorMsg && <p className="text-sm text-red-500 font-bold text-center">{errorMsg}</p>}
+          {errorMsg && (
+            <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center space-x-3 text-red-600 font-bold text-sm">
+              <XCircle size={18} />
+              <span>{errorMsg}</span>
+            </div>
+          )}
 
           <button 
             onClick={handleSignup}
             disabled={!isAvailable || loading}
-            className={`w-full h-16 rounded-2xl font-bold text-lg mt-4 shadow-xl active:scale-95 transition-all ${!isAvailable || loading ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-slate-900 text-white'}`}
+            className={`group w-full h-20 rounded-[28px] font-black text-xl mt-4 shadow-2xl transition-all flex items-center justify-center space-x-3 ${!isAvailable || loading ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' : 'premium-gradient text-white shadow-indigo-200 active:scale-95 hover:scale-[1.02]'}`}
           >
-            {loading ? "가입 중..." : "회원가입 완료"}
+            {loading ? (
+              <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <>
+                <span>계정 생성 및 시작하기</span>
+                <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+              </>
+            )}
           </button>
+
+          <p className="text-center text-slate-400 font-bold text-sm mt-4">
+            이미 계정이 있으신가요? <Link href="/login" className="text-indigo-600 hover:underline">로그인 페이지로</Link>
+          </p>
         </div>
       </div>
     </div>

@@ -2,6 +2,8 @@
 export const runtime = "edge";
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
+import { useRouter } from "next/navigation";
+import { Plus, X, Save, Clock, Coffee, CheckCircle2, ChevronRight } from "lucide-react";
 
 type DayConfig = { id?: number; partner_id: string; day_of_week: number; start_time: string; end_time: string; interval_minutes: number; on: boolean };
 type Break = { id?: number; start_time: string; end_time: string; label: string; day_of_week: number };
@@ -14,11 +16,17 @@ export default function AdminSchedulePage() {
   );
   const [breaks, setBreaks] = useState<Break[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     async function fetchSchedule() {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        router.push("/login");
+        return;
+      }
 
       // 1. 운영 시간 가져오기
       const { data: scheduleData } = await supabase
@@ -44,23 +52,47 @@ export default function AdminSchedulePage() {
       setIsLoading(false);
     }
     fetchSchedule();
-  }, []);
+  }, [router]);
+
+  const addBreak = () => {
+    setBreaks([...breaks, { label: "식사 시간", start_time: "12:00", end_time: "13:00", day_of_week: 1 }]);
+  };
+
+  const removeBreak = (idx: number) => {
+    setBreaks(breaks.filter((_, i) => i !== idx));
+  };
 
   const handleSave = async () => {
+    setIsSaving(true);
+    setSaveSuccess(false);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // "on" 되어 있는 것들만 저장 (Upsert)
-    const activeSchedules = days
-      .filter(d => d.on)
-      .map(({ name, on, ...rest }) => ({ ...rest, partner_id: user.id }));
-    
-    // "off" 된 것들은 삭제 (또는 DB 스키마에 따라 처리)
-    const { error } = await supabase
-      .from('schedules')
-      .upsert(activeSchedules, { onConflict: 'partner_id, day_of_week' });
-    
-    if (!error) alert("설정이 저장되었습니다!");
+    try {
+      // 1. 운영 시간 동기화 (기존 삭제 후 활성 항목 삽입)
+      await supabase.from('schedules').delete().eq('partner_id', user.id);
+      
+      const activeSchedules = days
+        .filter(d => d.on)
+        .map(({ name, on, id, ...rest }) => ({ ...rest, partner_id: user.id }));
+      
+      if (activeSchedules.length > 0) {
+        await supabase.from('schedules').insert(activeSchedules);
+      }
+
+      // 2. 휴게 시간 동기화
+      await supabase.from('breaks').delete().eq('partner_id', user.id);
+      if (breaks.length > 0) {
+        await supabase.from('breaks').insert(breaks.map(({ id, ...rest }) => ({ ...rest, partner_id: user.id })));
+      }
+
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err) {
+      alert("저장 중 오류가 발생했습니다.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const toggleDay = (idx: number) => {
@@ -69,32 +101,46 @@ export default function AdminSchedulePage() {
     setDays(newDays);
   };
 
-  if (isLoading) return <div className="p-10 text-center font-bold">로딩 중...</div>;
+  if (isLoading) return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
+      <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4" />
+      <p className="font-bold text-slate-400">설정을 불러오는 중...</p>
+    </div>
+  );
 
   return (
-    <div className="p-8 max-w-2xl mx-auto bg-slate-50 min-h-screen">
-      <h1 className="text-3xl font-black mb-8 text-slate-900">운영 시간 및 휴게 설정</h1>
+    <div className="p-6 max-w-2xl mx-auto bg-slate-50 min-h-screen pb-32">
+      <header className="mb-12 pt-8">
+        <div className="flex items-center space-x-2 text-indigo-600 font-bold text-sm mb-2 uppercase tracking-widest">
+          <Clock size={16} />
+          <span>Availability Settings</span>
+        </div>
+        <h1 className="text-4xl font-black text-slate-900 tracking-tight">운영 시간 및 휴게</h1>
+      </header>
       
-      <section className="bg-white p-6 rounded-[32px] shadow-sm border border-slate-100 mb-6">
-        <h2 className="text-lg font-bold mb-6 flex items-center">
-          <span className="w-1.5 h-6 bg-indigo-500 rounded-full mr-2"></span>
-          영업 요일 및 시간
-        </h2>
+      <section className="glass-card p-8 rounded-[40px] mb-8 relative overflow-hidden">
+        <div className="flex items-center justify-between mb-8">
+          <h2 className="text-xl font-black flex items-center">
+            <span className="w-2 h-8 bg-indigo-600 rounded-full mr-3"></span>
+            영업 요일 및 시간
+          </h2>
+        </div>
+        
         <div className="space-y-4">
           {days.map((day, idx) => (
-            <div key={day.name} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
-              <div className="flex items-center space-x-4">
+            <div key={day.name} className={`flex items-center justify-between p-5 rounded-3xl transition-all border ${day.on ? 'bg-indigo-50/50 border-indigo-100' : 'bg-white border-slate-100 opacity-60'}`}>
+              <div className="flex items-center space-x-5">
                 <button 
                   onClick={() => toggleDay(idx)}
-                  className={`w-12 h-6 rounded-full p-1 transition-colors ${day.on ? 'bg-indigo-600' : 'bg-slate-300'}`}
+                  className={`w-14 h-8 rounded-full p-1.5 transition-all duration-300 ${day.on ? 'bg-indigo-600 shadow-lg shadow-indigo-200' : 'bg-slate-200'}`}
                 >
-                  <div className={`w-4 h-4 bg-white rounded-full transition-transform ${day.on ? 'translate-x-6' : 'translate-x-0'}`} />
+                  <div className={`w-5 h-5 bg-white rounded-full transition-all duration-300 transform ${day.on ? 'translate-x-6' : 'translate-x-0'}`} />
                 </button>
-                <span className="font-bold text-slate-700 w-4">{day.name}</span>
+                <span className={`text-xl font-black ${day.on ? 'text-indigo-900' : 'text-slate-400'}`}>{day.name}</span>
               </div>
               
               {day.on && (
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-3">
                   <input 
                     type="time" 
                     value={day.start_time.substring(0,5)} 
@@ -103,9 +149,9 @@ export default function AdminSchedulePage() {
                       newDays[idx].start_time = e.target.value;
                       setDays(newDays);
                     }}
-                    className="bg-white border-none rounded-xl p-2 text-sm font-bold shadow-sm" 
+                    className="bg-white border-none rounded-2xl p-3 text-sm font-black text-slate-700 shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
                   />
-                  <span className="text-slate-300">-</span>
+                  <span className="text-slate-300 font-bold">-</span>
                   <input 
                     type="time" 
                     value={day.end_time.substring(0,5)} 
@@ -114,7 +160,7 @@ export default function AdminSchedulePage() {
                       newDays[idx].end_time = e.target.value;
                       setDays(newDays);
                     }}
-                    className="bg-white border-none rounded-xl p-2 text-sm font-bold shadow-sm" 
+                    className="bg-white border-none rounded-2xl p-3 text-sm font-black text-slate-700 shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
                   />
                 </div>
               )}
@@ -123,34 +169,104 @@ export default function AdminSchedulePage() {
         </div>
       </section>
 
-      <section className="bg-white p-6 rounded-[32px] shadow-sm border border-slate-100">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-lg font-bold flex items-center">
-            <span className="w-1.5 h-6 bg-orange-400 rounded-full mr-2"></span>
-            정기 휴게 시간 (브레이크)
+      <section className="glass-card p-8 rounded-[40px] relative overflow-hidden">
+        <div className="flex justify-between items-center mb-8">
+          <h2 className="text-xl font-black flex items-center">
+            <span className="w-2 h-8 bg-orange-500 rounded-full mr-3"></span>
+            정기 휴게 시간
           </h2>
-          <button className="text-indigo-600 text-sm font-bold">+ 추가</button>
+          <button 
+            onClick={addBreak}
+            className="flex items-center space-x-2 bg-slate-900 text-white px-5 py-3 rounded-2xl text-sm font-black hover:scale-105 transition-all active:scale-95 shadow-lg"
+          >
+            <Plus size={18} />
+            <span>추가</span>
+          </button>
         </div>
-        <div className="space-y-3">
-          {breaks.map(b => (
-            <div key={b.id} className="flex items-center justify-between p-4 bg-orange-50 rounded-2xl border border-orange-100">
-              <span className="font-bold text-orange-900">{b.label}</span>
-              <div className="flex items-center space-x-2">
-                <span className="text-sm font-bold text-orange-700">{b.start_time.substring(0,5)} - {b.end_time.substring(0,5)}</span>
-                <button className="text-orange-300 ml-2">×</button>
+        
+        <div className="space-y-4">
+          {breaks.map((b, i) => (
+            <div key={i} className="group flex flex-col p-6 bg-orange-50/50 rounded-3xl border border-orange-100 hover:border-orange-300 transition-all">
+              <div className="flex items-center justify-between mb-4">
+                <input 
+                  type="text" 
+                  value={b.label}
+                  onChange={(e) => {
+                    const newBreaks = [...breaks];
+                    newBreaks[i].label = e.target.value;
+                    setBreaks(newBreaks);
+                  }}
+                  placeholder="항목 예: 점심 시간"
+                  className="bg-transparent border-none outline-none font-black text-orange-900 text-lg placeholder:text-orange-200 w-full"
+                />
+                <button 
+                  onClick={() => removeBreak(i)}
+                  className="text-orange-300 hover:text-red-500 transition-colors p-1"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+              <div className="flex items-center space-x-3">
+                <Coffee size={16} className="text-orange-400" />
+                <input 
+                  type="time" 
+                  value={b.start_time.substring(0,5)}
+                  onChange={(e) => {
+                    const newBreaks = [...breaks];
+                    newBreaks[i].start_time = e.target.value;
+                    setBreaks(newBreaks);
+                  }}
+                  className="bg-white border-none rounded-xl p-2 text-sm font-black text-orange-900 shadow-sm"
+                />
+                <span className="text-orange-300 font-bold">-</span>
+                <input 
+                  type="time" 
+                  value={b.end_time.substring(0,5)}
+                  onChange={(e) => {
+                    const newBreaks = [...breaks];
+                    newBreaks[i].end_time = e.target.value;
+                    setBreaks(newBreaks);
+                  }}
+                  className="bg-white border-none rounded-xl p-2 text-sm font-black text-orange-900 shadow-sm"
+                />
               </div>
             </div>
           ))}
-          {breaks.length === 0 && <p className="text-center py-6 text-slate-400 text-sm">등록된 휴게 시간이 없습니다.</p>}
+          {breaks.length === 0 && (
+            <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-[32px]">
+              <p className="text-slate-400 font-bold">등록된 휴게 시간이 없습니다.</p>
+            </div>
+          )}
         </div>
       </section>
 
-      <button 
-        onClick={handleSave}
-        className="w-full h-16 bg-slate-900 text-white rounded-3xl font-bold mt-8 shadow-xl shadow-slate-200 active:scale-95 transition-all"
-      >
-        설정 저장하기
-      </button>
+      <div className="fixed bottom-0 left-0 right-0 p-6 flex justify-center pointer-events-none">
+        <div className="max-w-2xl w-full pointer-events-auto">
+          <button 
+            onClick={handleSave}
+            disabled={isSaving}
+            className={`w-full h-20 rounded-[32px] font-black text-xl shadow-2xl transition-all transform active:scale-95 flex items-center justify-center space-x-3 ${
+              saveSuccess 
+                ? "bg-green-500 text-white shadow-green-200" 
+                : "bg-slate-900 text-white shadow-slate-300"
+            } ${isSaving ? 'opacity-70 scale-95' : ''}`}
+          >
+            {isSaving ? (
+              <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : saveSuccess ? (
+              <>
+                <CheckCircle2 size={24} />
+                <span>성공적으로 저장됨</span>
+              </>
+            ) : (
+              <>
+                <Save size={24} />
+                <span>설정 저장하기</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
