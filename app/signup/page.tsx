@@ -73,7 +73,7 @@ export default function SignupPage() {
       ]);
 
       if (profileError) {
-        setErrorMsg("프로필 생성 중 오류가 발생했습니다.");
+        setErrorMsg(`프로필 생성 오류: ${profileError.message}`);
         setLoading(false);
       } else {
         // 성공 시 어드민으로 이동
