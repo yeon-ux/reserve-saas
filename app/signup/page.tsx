@@ -28,8 +28,13 @@ export default function SignupPage() {
         .single();
       
       // PGRST116: Results not found (사용 가능)
-      if (error && error.code === "PGRST116") {
-        setIsAvailable(true);
+      if (error) {
+        if (error.code === "PGRST116") {
+          setIsAvailable(true);
+        } else {
+          setIsAvailable(false);
+          setErrorMsg("연결 오류: 서비스가 준비 중이거나 설정이 올바르지 않습니다.");
+        }
       } else {
         setIsAvailable(false);
       }
