@@ -4,4 +4,5 @@ compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = ".vercel/output/static"
 
 [vars]
-# Supabase 환경 변수는 Cloudflare Dashboard에서 설정하는 것을 권장합니다.
+NEXT_PUBLIC_SUPABASE_URL = "https://sagmcmfputhcfisvglbx.supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY = "sb_publishable_eV_eT3ojdX5jGIHfh3qJQA_jcoi-tKs"
