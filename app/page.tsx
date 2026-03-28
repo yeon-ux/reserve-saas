@@ -9,32 +9,30 @@ import { ArrowRight, Sparkles, Shield, Zap } from 'lucide-react'
 export default function LandingPage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
+  const [session, setSession] = useState<any>(null);
+  const [isPartner, setIsPartner] = useState(false);
 
   useEffect(() => {
     setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    async function checkUser() {
-      const { data: { session } } = await supabase.auth.getSession();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
       if (session) {
-        // 유저가 파트너 테이블에 있는지 확인
-        const { data: partner } = await supabase
-          .from('partners')
+        supabase.from('partners')
           .select('slug')
           .eq('id', session.user.id)
-          .single();
-        
-        if (partner) {
-          router.push("/admin/reservations");
-        } else {
-          // 파트너 정보가 없으면 슬러그 설정을 위해 가입 페이지로 유도
-          router.push("/signup");
-        }
+          .single()
+          .then(({ data }) => {
+            if (data) setIsPartner(true);
+          });
       }
-    }
-    if (mounted) checkUser();
-  }, [router, mounted]);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   if (!mounted) return null;
   return (
@@ -50,9 +48,15 @@ export default function LandingPage() {
           </div>
           <span className="text-2xl font-black tracking-tight drop-shadow-sm">Smart Reserve</span>
         </div>
-        <Link href="/login" className="px-6 py-2.5 font-bold text-slate-600 hover:text-indigo-600 transition-colors">
-          로그인
-        </Link>
+        {session ? (
+          <Link href="/admin/reservations" className="px-6 py-2.5 font-bold text-indigo-600 hover:text-indigo-800 transition-colors">
+            관리자 대시보드
+          </Link>
+        ) : (
+          <Link href="/login" className="px-6 py-2.5 font-bold text-slate-600 hover:text-indigo-600 transition-colors">
+            로그인
+          </Link>
+        )}
       </nav>
 
       <main className="relative z-10 max-w-7xl mx-auto px-8 pt-20 pb-32 grid lg:grid-cols-2 gap-12 items-center">
@@ -72,8 +76,11 @@ export default function LandingPage() {
           </p>
           
           <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-6 pt-4">
-            <Link href="/signup" className="w-full sm:w-auto px-10 py-5 premium-gradient text-white rounded-[24px] font-black text-xl shadow-2xl shadow-indigo-200 flex items-center justify-center space-x-3 hover:scale-105 active:scale-95 transition-all">
-              <span>무료로 시작하기</span>
+            <Link 
+              href={session ? (isPartner ? "/admin/reservations" : "/signup") : "/signup"} 
+              className="w-full sm:w-auto px-10 py-5 premium-gradient text-white rounded-[24px] font-black text-xl shadow-2xl shadow-indigo-200 flex items-center justify-center space-x-3 hover:scale-105 active:scale-95 transition-all"
+            >
+              <span>{session ? (isPartner ? "관리자 대시보드" : "회원가입 완료하기") : "무료로 시작하기"}</span>
               <ArrowRight size={20} />
             </Link>
             <div className="flex items-center -space-x-3">

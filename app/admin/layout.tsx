@@ -6,6 +6,7 @@ import { supabase } from "../../lib/supabase";
 import { Calendar, Clock, Bell, Settings, LogOut, Users, Home, ExternalLink, Copy, Check } from "lucide-react";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
   const [slug, setSlug] = useState("");
   const [copied, setCopied] = useState(false);
