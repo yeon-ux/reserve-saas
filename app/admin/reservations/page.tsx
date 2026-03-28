@@ -34,6 +34,7 @@ export default function AdminReservationsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -48,6 +49,7 @@ export default function AdminReservationsPage() {
       if (data) setReservations(data);
       setIsLoading(false);
     }
+// ... (omitting identical fetch logic for brevity in replace call, but ensure state is used)
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
@@ -104,87 +106,168 @@ export default function AdminReservationsPage() {
     const endDate = endOfWeek(monthEnd);
     const days = eachDayOfInterval({ start: startDate, end: endDate });
 
+    const selectedDayReservations = selectedDate 
+      ? reservations.filter(r => isSameDay(parseISO(r.reserved_at), selectedDate))
+      : [];
+
     return (
-      <div className="bg-white rounded-[40px] border border-slate-100 shadow-xl shadow-indigo-50/50 overflow-hidden">
-        <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-            {format(currentDate, "yyyy년 M월", { locale: ko })}
-          </h2>
-          <div className="flex items-center space-x-2">
-            <button 
-              onClick={() => setCurrentDate(subMonths(currentDate, 1))}
-              className="p-3 bg-white border border-slate-100 rounded-2xl text-slate-400 hover:text-indigo-600 hover:border-indigo-100 transition-all active:scale-90"
-            >
-              <ChevronLeft size={20} />
-            </button>
-            <button 
-              onClick={() => setCurrentDate(new Date())}
-              className="px-6 py-3 bg-white border border-slate-100 rounded-2xl text-xs font-black text-slate-900 hover:bg-slate-50 transition-all active:scale-90"
-            >
-              오늘
-            </button>
-            <button 
-              onClick={() => setCurrentDate(addMonths(currentDate, 1))}
-              className="p-3 bg-white border border-slate-100 rounded-2xl text-slate-400 hover:text-indigo-600 hover:border-indigo-100 transition-all active:scale-90"
-            >
-              <ChevronRight size={20} />
-            </button>
+      <div className="relative">
+        <div className="bg-white rounded-[40px] border border-slate-100 shadow-xl shadow-indigo-50/50 overflow-hidden">
+          <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight">
+              {format(currentDate, "yyyy년 M월", { locale: ko })}
+            </h2>
+            <div className="flex items-center space-x-2">
+              <button 
+                onClick={() => setCurrentDate(subMonths(currentDate, 1))}
+                className="p-3 bg-white border border-slate-100 rounded-2xl text-slate-400 hover:text-indigo-600 hover:border-indigo-100 transition-all active:scale-90"
+              >
+                <ChevronLeft size={20} />
+              </button>
+              <button 
+                onClick={() => setCurrentDate(new Date())}
+                className="px-6 py-3 bg-white border border-slate-100 rounded-2xl text-xs font-black text-slate-900 hover:bg-slate-50 transition-all active:scale-90"
+              >
+                오늘
+              </button>
+              <button 
+                onClick={() => setCurrentDate(addMonths(currentDate, 1))}
+                className="p-3 bg-white border border-slate-100 rounded-2xl text-slate-400 hover:text-indigo-600 hover:border-indigo-100 transition-all active:scale-90"
+              >
+                <ChevronRight size={20} />
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-7 border-b border-slate-50 bg-slate-50/30">
+            {['일', '월', '화', '수', '목', '금', '토'].map((day, idx) => (
+              <div key={day} className={`py-4 text-center text-xs font-black tracking-widest ${idx === 0 ? 'text-red-400' : idx === 6 ? 'text-indigo-400' : 'text-slate-400'}`}>
+                {day}
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7">
+            {days.map((day, idx) => {
+              const dayReservations = reservations.filter(r => isSameDay(parseISO(r.reserved_at), day));
+              const isToday = isSameDay(day, new Date());
+              const isCurrentMonth = isSameMonth(day, monthStart);
+
+              return (
+                <div 
+                  key={day.toString()} 
+                  onClick={() => setSelectedDate(day)}
+                  className={`min-h-[140px] p-4 border-r border-b border-slate-50 transition-all hover:bg-indigo-50/30 cursor-pointer group relative ${!isCurrentMonth ? 'bg-slate-50/10 opacity-40' : ''}`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`text-sm font-black ${
+                      isToday ? 'bg-indigo-600 text-white w-7 h-7 flex items-center justify-center rounded-lg shadow-lg shadow-indigo-100 animate-pulse' : 
+                      idx % 7 === 0 ? 'text-red-400' : idx % 7 === 6 ? 'text-indigo-400' : 'text-slate-400'
+                    }`}>
+                      {format(day, "d")}
+                    </span>
+                    {dayReservations.length > 0 && (
+                      <span className="text-[10px] font-black bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-md group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                        {dayReservations.length}
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-1 overflow-hidden">
+                    {dayReservations.slice(0, 3).map(r => (
+                      <div 
+                        key={r.id} 
+                        className={`text-[10px] p-1.5 rounded-lg font-black truncate border ${
+                          r.status === 'confirmed' ? 'bg-green-50 border-green-100 text-green-700' : 
+                          r.status === 'cancelled' ? 'bg-slate-50 border-slate-100 text-slate-400 line-through' : 
+                          'bg-indigo-50 border-indigo-100 text-indigo-700'
+                        }`}
+                      >
+                        {format(parseISO(r.reserved_at), "HH:mm")} {r.customer_name}
+                      </div>
+                    ))}
+                    {dayReservations.length > 3 && (
+                      <p className="text-[9px] font-bold text-slate-300 pl-1 mt-1">외 {dayReservations.length - 3}건...</p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
-        <div className="grid grid-cols-7 border-b border-slate-50 bg-slate-50/30">
-          {['일', '월', '화', '수', '목', '금', '토'].map((day, idx) => (
-            <div key={day} className={`py-4 text-center text-xs font-black tracking-widest ${idx === 0 ? 'text-red-400' : idx === 6 ? 'text-indigo-400' : 'text-slate-400'}`}>
-              {day}
-            </div>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-7">
-          {days.map((day, idx) => {
-            const dayReservations = reservations.filter(r => isSameDay(parseISO(r.reserved_at), day));
-            const isToday = isSameDay(day, new Date());
-            const isCurrentMonth = isSameMonth(day, monthStart);
-
-            return (
-              <div 
-                key={day.toString()} 
-                className={`min-h-[140px] p-4 border-r border-b border-slate-50 transition-colors hover:bg-slate-50/50 group ${!isCurrentMonth ? 'bg-slate-50/30 opacity-40' : ''}`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className={`text-sm font-black ${
-                    isToday ? 'bg-indigo-600 text-white w-7 h-7 flex items-center justify-center rounded-lg shadow-lg shadow-indigo-100' : 
-                    idx % 7 === 0 ? 'text-red-400' : idx % 7 === 6 ? 'text-indigo-400' : 'text-slate-400'
-                  }`}>
-                    {format(day, "d")}
-                  </span>
-                  {dayReservations.length > 0 && (
-                    <span className="text-[10px] font-black bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-md">
-                      {dayReservations.length}
-                    </span>
-                  )}
+        {/* Day Detail Modal Overlay */}
+        {selectedDate && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-md animate-in fade-in duration-300">
+            <div 
+              className="bg-white w-full max-w-xl rounded-[48px] shadow-2xl overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-10 duration-500"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-10 border-b border-slate-50 flex items-center justify-between bg-white">
+                <div>
+                  <h3 className="text-3xl font-black text-slate-900 tracking-tight">
+                    {format(selectedDate, "M월 d일 예약 현황", { locale: ko })}
+                  </h3>
+                  <p className="text-slate-400 font-bold text-sm mt-1 uppercase tracking-widest flex items-center gap-2">
+                    <Clock size={14} />
+                    <span>Daily Schedule Details</span>
+                  </p>
                 </div>
-                <div className="space-y-1 overflow-hidden">
-                  {dayReservations.slice(0, 3).map(r => (
-                    <div 
-                      key={r.id} 
-                      className={`text-[10px] p-1.5 rounded-lg font-black truncate border ${
-                        r.status === 'confirmed' ? 'bg-green-50 border-green-100 text-green-700' : 
-                        r.status === 'cancelled' ? 'bg-slate-50 border-slate-100 text-slate-400 line-through' : 
-                        'bg-indigo-50 border-indigo-100 text-indigo-700'
-                      }`}
-                    >
-                      {format(parseISO(r.reserved_at), "HH:mm")} {r.customer_name}
-                    </div>
-                  ))}
-                  {dayReservations.length > 3 && (
-                    <p className="text-[9px] font-bold text-slate-300 pl-1 mt-1">외 {dayReservations.length - 3}건...</p>
-                  )}
-                </div>
+                <button 
+                  onClick={() => setSelectedDate(null)}
+                  className="p-4 bg-slate-50 text-slate-400 rounded-3xl hover:bg-red-50 hover:text-red-500 transition-all active:scale-95"
+                >
+                  <XCircle size={32} />
+                </button>
               </div>
-            );
-          })}
-        </div>
+              
+              <div className="p-8 max-h-[60vh] overflow-y-auto space-y-4 custom-scrollbar">
+                {selectedDayReservations.length > 0 ? (
+                  selectedDayReservations.sort((a,b) => a.reserved_at.localeCompare(b.reserved_at)).map((r) => (
+                    <div key={r.id} className="p-6 bg-slate-50/50 rounded-[32px] border border-slate-100 hover:border-indigo-100 transition-all">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center space-x-5">
+                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-sm ${r.no_show_at ? 'bg-red-100 text-red-500' : 'bg-indigo-100 text-indigo-600'}`}>
+                            {format(parseISO(r.reserved_at), "HH:mm")}
+                          </div>
+                          <div>
+                            <div className="flex items-center space-x-2">
+                              <span className="font-black text-slate-900 text-lg">{r.customer_name}</span>
+                              {r.no_show_at && <span className="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-widest">No-Show</span>}
+                            </div>
+                            <div className="flex items-center space-x-3 text-sm font-bold text-slate-400 mt-0.5">
+                              <span className="flex items-center gap-1.5"><Phone size={12} />{r.customer_phone}</span>
+                              <span className={`px-2 py-0.5 rounded-lg text-[10px] ${
+                                r.status === 'confirmed' ? 'bg-green-100 text-green-600' : 
+                                r.status === 'cancelled' ? 'bg-red-50 text-red-400' : 'bg-indigo-50 text-indigo-600'
+                              }`}>
+                                {r.status === 'confirmed' ? '확정' : r.status === 'cancelled' ? '취소' : '대기'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <button 
+                          onClick={() => {
+                            setSelectedDate(null);
+                            setViewMode('list');
+                            // Scroll to list item might be needed
+                          }}
+                          className="p-3 bg-white border border-slate-100 rounded-2xl text-slate-400 hover:text-indigo-600 transition-all shadow-sm"
+                        >
+                          <ChevronRight size={20} />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-12">
+                    <AlertCircle size={48} className="mx-auto text-slate-100 mb-4" />
+                    <p className="text-slate-400 font-bold">예약된 일정이 없습니다.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
