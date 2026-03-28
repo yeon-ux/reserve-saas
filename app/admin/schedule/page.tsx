@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { format } from "date-fns";
 import { Plus, X, Save, Clock, Coffee, CheckCircle2, ChevronRight, Settings, Calendar, Utensils, AlertCircle, User } from "lucide-react";
 
 type DayConfig = { id?: number; partner_id: string; day_of_week: number; start_time: string; end_time: string; interval_minutes: number; on: boolean; max_capacity: number };

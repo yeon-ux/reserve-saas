@@ -26,10 +26,15 @@ export default function ReservationPage({ params }: { params: { slug: string } }
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [memo, setMemo] = useState("");
+  const [selectedService, setSelectedService] = useState<string | null>(null);
+
   const [isBlocked, setIsBlocked] = useState(false);
   const [isCheckingBlacklist, setIsCheckingBlacklist] = useState(false);
   const [hasAgreedTerms, setHasAgreedTerms] = useState(false);
   const [isSubmitLoading, setIsSubmitLoading] = useState(false);
+  
+  const [scheduleExceptions, setScheduleExceptions] = useState<any[]>([]);
 
   useEffect(() => {
     async function fetchPartnerData() {
@@ -98,9 +103,11 @@ export default function ReservationPage({ params }: { params: { slug: string } }
   useEffect(() => {
     if (!partner) return;
     
-    async function fetchReservations() {
+    async function fetchReservationsAndExceptions() {
       const dateStr = format(selectedDate, "yyyy-MM-dd");
-      const { data } = await supabase
+      
+      // 1. 예약 현황 가져오기 (각 슬롯별 예약 수 카운트를 위해 전체 데이터 로드)
+      const { data: resData } = await supabase
         .from('reservations')
         .select('reserved_at')
         .eq('partner_id', partner.id)
@@ -108,11 +115,19 @@ export default function ReservationPage({ params }: { params: { slug: string } }
         .lte('reserved_at', `${dateStr}T23:59:59`)
         .neq('status', 'cancelled');
       
-      if (data) {
-        setReservations(data.map(r => format(new Date(r.reserved_at), "HH:mm")));
+      if (resData) {
+        setReservations(resData.map(r => format(new Date(r.reserved_at), "HH:mm")));
       }
+
+      // 2. 해당 날짜의 예외 운영 시간 가져오기
+      const { data: exData } = await supabase
+         .from('schedule_exceptions')
+         .select('*')
+         .eq('partner_id', partner.id)
+         .eq('exception_date', dateStr);
+      setScheduleExceptions(exData || []);
     }
-    fetchReservations();
+    fetchReservationsAndExceptions();
   }, [selectedDate, partner]);
 
   // 블랙리스트 체크 (사용자가 번호를 완전히 입력했을 때)
@@ -135,23 +150,50 @@ export default function ReservationPage({ params }: { params: { slug: string } }
 
     const dateStr = format(selectedDate, 'yyyy-MM-dd');
     const dayOfWeek = getDay(selectedDate);
-    const currentWorkConfig = workConfigs[dayOfWeek] || null;
+    
+    // 1. 기본 운영 시간 또는 예외 운영 시간 결정
+    let currentWorkConfig = workConfigs[dayOfWeek] || null;
+    const exception = scheduleExceptions.find(ex => ex.exception_date === dateStr);
+    
+    if (exception) {
+       if (exception.is_closed) {
+          setAvailableSlots([]);
+          return;
+       }
+       currentWorkConfig = {
+          startTime: exception.start_time,
+          endTime: exception.end_time,
+          interval: currentWorkConfig?.interval || 60
+       };
+    }
 
-    // 해당 날짜의 휴게 시간 필터링 (요일 매칭)
-    const currentBreaks = breaks; 
+    if (!currentWorkConfig) {
+       setAvailableSlots([]);
+       return;
+    }
 
-    const slots = calculateFinalSlots(
+    // 2. 슬롯 생성 및 필터링
+    const rawSlots = calculateFinalSlots(
       dateStr,
       dayOfWeek,
       currentWorkConfig,
-      currentBreaks,
+      breaks,
       holidays,
       events,
-      reservations
+      [] // 예약 필터링은 수용량 체크를 위해 여기서 별도로 수행
     );
     
-    setAvailableSlots(slots);
-  }, [selectedDate, partner, workConfigs, breaks, holidays, events, reservations]);
+    // 3. 중복 예약(수용량) 체크
+    // schedules 테이블에서 해당 요일의 max_capacity 가져오기 (기본값 1)
+    const maxCap = workConfigs[dayOfWeek]?.max_capacity || 1;
+    
+    const finalSlots = rawSlots.filter(slot => {
+       const currentCount = reservations.filter(r => r === slot).length;
+       return currentCount < maxCap;
+    });
+    
+    setAvailableSlots(finalSlots);
+  }, [selectedDate, partner, workConfigs, breaks, holidays, events, reservations, scheduleExceptions]);
 
   const handleBooking = async () => {
     if (!selectedTime || !customerName || !customerPhone || isBlocked || !hasAgreedTerms) return;
