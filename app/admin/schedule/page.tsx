@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, X, Save, Clock, Coffee, CheckCircle2, ChevronRight, Settings, Calendar, Utensils, AlertCircle } from "lucide-react";
+import { Plus, X, Save, Clock, Coffee, CheckCircle2, ChevronRight, Settings, Calendar, Utensils, AlertCircle, User } from "lucide-react";
 
 type DayConfig = { id?: number; partner_id: string; day_of_week: number; start_time: string; end_time: string; interval_minutes: number; on: boolean; max_capacity: number };
 type Break = { id?: number; start_time: string; end_time: string; label: string; day_of_week: number };
@@ -122,11 +122,18 @@ export default function AdminSchedulePage() {
         const allDayBreaks = [];
         for (let day = 0; day <= 6; day++) {
           for (const b of breaks) {
-            const { id, ...rest } = b;
+            const { id, ...rest } = b as any;
             allDayBreaks.push({ ...rest, partner_id: user.id, day_of_week: day });
           }
         }
         await supabase.from('breaks').insert(allDayBreaks);
+      }
+
+      // 4. 예외 일정 동기화
+      await supabase.from('schedule_exceptions').delete().eq('partner_id', user.id);
+      if (exceptions.length > 0) {
+         const cleanExceptions = exceptions.map(({ id, ...rest }) => ({ ...rest, partner_id: user.id }));
+         await supabase.from('schedule_exceptions').insert(cleanExceptions);
       }
 
       setSaveSuccess(true);
@@ -393,11 +400,93 @@ export default function AdminSchedulePage() {
       )}
 
       {activeTab === 'exceptions' && (
-        <div className="animate-in slide-in-from-bottom-4 duration-500">
-           <section className="glass-card p-10 rounded-[48px] shadow-2xl bg-white text-center py-32">
-              <Calendar size={64} className="mx-auto text-slate-100 mb-6" />
-              <h2 className="text-2xl font-black text-slate-900">일자별 특수 일정 (준비 중)</h2>
-              <p className="text-slate-400 font-bold mt-2 max-w-sm mx-auto">특정 날짜의 주/야간 교대제나 임시 휴무를 설정하는 기능이 곧 활성화됩니다.</p>
+        <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
+           <section className="glass-card p-10 rounded-[48px] shadow-2xl bg-white">
+              <div className="flex justify-between items-center mb-10">
+                 <div>
+                   <h2 className="text-2xl font-black flex items-center">
+                     <span className="w-2.5 h-10 bg-rose-500 rounded-full mr-4"></span>
+                     날짜별 특수 일정 (Overrides)
+                   </h2>
+                   <p className="text-slate-400 font-bold text-sm mt-1 ml-6">특정 날짜의 영업 시간을 변경하거나 휴무를 설정하세요.</p>
+                 </div>
+                 <button 
+                  onClick={() => setExceptions([...exceptions, { id: crypto.randomUUID(), exception_date: format(new Date(), "yyyy-MM-dd"), start_time: "10:00", end_time: "22:00", is_closed: false }])}
+                  className="bg-slate-900 text-white px-6 py-4 rounded-3xl text-sm font-black flex items-center gap-2"
+                 >
+                   <Plus size={20} />
+                   <span>예외 추가</span>
+                 </button>
+              </div>
+
+              <div className="grid gap-6">
+                 {exceptions.map((ex, i) => (
+                    <div key={ex.id} className="p-8 bg-slate-50/50 rounded-[40px] border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-6 transition-all hover:bg-white hover:shadow-xl">
+                       <div className="flex items-center gap-6">
+                          <div className="p-4 bg-white rounded-3xl border border-slate-100 shadow-sm font-black text-slate-900">
+                             <input 
+                               type="date" 
+                               value={ex.exception_date}
+                               onChange={(e) => {
+                                  const newEx = [...exceptions];
+                                  newEx[i].exception_date = e.target.value;
+                                  setExceptions(newEx);
+                               }}
+                               className="bg-transparent border-none outline-none cursor-pointer"
+                             />
+                          </div>
+                          <div className="flex items-center gap-3">
+                             <button 
+                               onClick={() => {
+                                  const newEx = [...exceptions];
+                                  newEx[i].is_closed = !newEx[i].is_closed;
+                                  setExceptions(newEx);
+                               }}
+                               className={`px-6 py-3 rounded-2xl text-xs font-black transition-all ${ex.is_closed ? 'bg-rose-500 text-white' : 'bg-green-500 text-white opacity-40'}`}
+                             >
+                               {ex.is_closed ? '휴무' : '영업'}
+                             </button>
+                          </div>
+                       </div>
+
+                       {!ex.is_closed && (
+                          <div className="flex items-center gap-3">
+                             <input 
+                               type="time" 
+                               value={ex.start_time.substring(0,5)}
+                               onChange={(e) => {
+                                  const newEx = [...exceptions];
+                                  newEx[i].start_time = e.target.value;
+                                  setExceptions(newEx);
+                               }}
+                               className="bg-white border border-slate-100 rounded-2xl p-4 text-sm font-black text-slate-700 w-32 text-center"
+                             />
+                             <span className="text-slate-300 font-black">~</span>
+                             <input 
+                               type="time" 
+                               value={ex.end_time.substring(0,5)}
+                               onChange={(e) => {
+                                  const newEx = [...exceptions];
+                                  newEx[i].end_time = e.target.value;
+                                  setExceptions(newEx);
+                               }}
+                               className="bg-white border border-slate-100 rounded-2xl p-4 text-sm font-black text-slate-700 w-32 text-center"
+                             />
+                          </div>
+                       )}
+
+                       <button onClick={() => setExceptions(exceptions.filter(item => item.id !== ex.id))} className="p-4 text-slate-200 hover:text-red-500 transition-all">
+                          <X size={24} />
+                       </button>
+                    </div>
+                 ))}
+                 {exceptions.length === 0 && (
+                    <div className="text-center py-20 border-2 border-dashed border-slate-100 rounded-[40px]">
+                       <p className="text-slate-300 font-black">설정된 예외 일정이 없습니다.</p>
+                       <p className="text-xs text-slate-300 mt-2">주야간 교대나 공휴일 영업 등을 이곳에서 관리하세요.</p>
+                    </div>
+                 )}
+              </div>
            </section>
         </div>
       )}
