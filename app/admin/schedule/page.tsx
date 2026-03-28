@@ -412,7 +412,7 @@ export default function AdminSchedulePage() {
                    <p className="text-slate-400 font-bold text-sm mt-1 ml-6">특정 날짜의 영업 시간을 변경하거나 휴무를 설정하세요.</p>
                  </div>
                  <button 
-                  onClick={() => setExceptions([...exceptions, { id: crypto.randomUUID(), exception_date: format(new Date(), "yyyy-MM-dd"), start_time: "10:00", end_time: "22:00", is_closed: false }])}
+                  onClick={() => setExceptions([...exceptions, { id: Math.random().toString(36).substring(2, 11), exception_date: format(new Date(), "yyyy-MM-dd"), start_time: "10:00", end_time: "22:00", is_closed: false }])}
                   className="bg-slate-900 text-white px-6 py-4 rounded-3xl text-sm font-black flex items-center gap-2"
                  >
                    <Plus size={20} />
