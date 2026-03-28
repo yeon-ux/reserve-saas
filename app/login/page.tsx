@@ -1,6 +1,5 @@
 "use client";
-export const runtime = "edge";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -10,7 +9,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [mounted, setMounted] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleLogin = async () => {
     setLoading(true);
@@ -28,6 +32,8 @@ export default function LoginPage() {
       router.push("/admin/schedule");
     }
   };
+
+  if (!mounted) return null;
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50">

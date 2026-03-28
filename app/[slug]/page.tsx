@@ -1,6 +1,5 @@
 "use client";
 
-export const runtime = 'edge';
 
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
@@ -8,12 +7,7 @@ import { calculateFinalSlots, WorkConfig, TimeRange, ReservationEvent } from "..
 import { format, addDays, isSameDay, getDay } from "date-fns";
 import { ko } from "date-fns/locale";
 
-// AdSense용 더미 컴포넌트 (실제 구현 시 교체 필요)
-const AdSenseBanner = ({ client, slot }: { client: string; slot: string }) => (
-  <div className="p-4 bg-slate-100 text-[10px] text-slate-400 text-center uppercase tracking-widest font-bold">
-    Advertisement
-  </div>
-);
+import AdContainer from "../../components/AdContainer";
 
 export default function ReservationPage({ params }: { params: { slug: string } }) {
   const [partner, setPartner] = useState<any>(null);
@@ -27,6 +21,15 @@ export default function ReservationPage({ params }: { params: { slug: string } }
   const [holidays, setHolidays] = useState<string[]>([]);
   const [events, setEvents] = useState<ReservationEvent[]>([]);
   const [reservations, setReservations] = useState<string[]>([]);
+
+  // 예약 신청 서적 상태
+  const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [isCheckingBlacklist, setIsCheckingBlacklist] = useState(false);
+  const [hasAgreedTerms, setHasAgreedTerms] = useState(false);
+  const [isSubmitLoading, setIsSubmitLoading] = useState(false);
 
   useEffect(() => {
     async function fetchPartnerData() {
@@ -91,6 +94,41 @@ export default function ReservationPage({ params }: { params: { slug: string } }
     fetchPartnerData();
   }, [params.slug]);
 
+  // 해당 날짜의 기존 예약 목록 가져오기
+  useEffect(() => {
+    if (!partner) return;
+    
+    async function fetchReservations() {
+      const dateStr = format(selectedDate, "yyyy-MM-dd");
+      const { data } = await supabase
+        .from('reservations')
+        .select('reserved_at')
+        .eq('partner_id', partner.id)
+        .gte('reserved_at', `${dateStr}T00:00:00`)
+        .lte('reserved_at', `${dateStr}T23:59:59`)
+        .neq('status', 'cancelled');
+      
+      if (data) {
+        setReservations(data.map(r => format(new Date(r.reserved_at), "HH:mm")));
+      }
+    }
+    fetchReservations();
+  }, [selectedDate, partner]);
+
+  // 블랙리스트 체크 (사용자가 번호를 완전히 입력했을 때)
+  useEffect(() => {
+    if (customerPhone.length >= 10 && partner) {
+      import("../../lib/blacklist").then(async ({ checkIsBlacklisted }) => {
+        setIsCheckingBlacklist(true);
+        const blocked = await checkIsBlacklisted(supabase, customerPhone);
+        setIsBlocked(blocked);
+        setIsCheckingBlacklist(false);
+      });
+    } else {
+      setIsBlocked(false);
+    }
+  }, [customerPhone, partner]);
+
   // 날짜 선택 시 가용 시간 계산 (필터링 엔진 적용)
   useEffect(() => {
     if (!partner) return;
@@ -100,7 +138,7 @@ export default function ReservationPage({ params }: { params: { slug: string } }
     const currentWorkConfig = workConfigs[dayOfWeek] || null;
 
     // 해당 날짜의 휴게 시간 필터링 (요일 매칭)
-    const currentBreaks = breaks; // 실제 로직에서는 요일별로 필터링하거나 엔진 내부에서 처리할 수 있도록 보강 가능
+    const currentBreaks = breaks; 
 
     const slots = calculateFinalSlots(
       dateStr,
@@ -115,23 +153,49 @@ export default function ReservationPage({ params }: { params: { slug: string } }
     setAvailableSlots(slots);
   }, [selectedDate, partner, workConfigs, breaks, holidays, events, reservations]);
 
-  if (!partner) return <div className="p-10 text-center font-bold">로딩 중...</div>;
+  const handleBooking = async () => {
+    if (!selectedTime || !customerName || !customerPhone || isBlocked || !hasAgreedTerms) return;
+
+    setIsSubmitLoading(true);
+    try {
+      const reservedAt = `${format(selectedDate, "yyyy-MM-dd")}T${selectedTime}:00Z`;
+      
+      const { error } = await supabase
+        .from('reservations')
+        .insert([{
+          partner_id: partner.id,
+          customer_name: customerName,
+          customer_phone: customerPhone,
+          reserved_at: reservedAt,
+          status: 'pending'
+        }]);
+      
+      if (error) throw error;
+
+      alert("예약이 완료되었습니다!");
+      setIsBookingModalOpen(false);
+      setSelectedTime(null);
+      // 예약 목록 새로고침 유도
+      setReservations([...reservations, selectedTime]);
+    } catch (err: any) {
+      alert("예약 중 오류: " + err.message);
+    } finally {
+      setIsSubmitLoading(false);
+    }
+  };
+
+  if (!partner) return <div className="p-10 text-center font-bold text-slate-400">명함을 불러오는 중...</div>;
 
   const dates = Array.from({ length: 14 }).map((_, i) => addDays(new Date(), i));
 
   return (
     <div className="max-w-md mx-auto min-h-screen bg-slate-50 relative pb-40">
-      {/* 프리미엄이 아닌 경우 상단 광고 */}
-      {!partner.is_pro && (
-        <div className="bg-white border-b border-slate-100">
-           <AdSenseBanner client="ca-pub-xxx" slot="xxx" />
-        </div>
-      )}
+      <AdContainer partner={partner} />
 
       <header className="p-8 pb-6 bg-white rounded-b-[48px] shadow-sm mb-6">
         <div className="flex items-center space-x-5 mb-8">
-          <div className="w-16 h-16 rounded-[24px] bg-indigo-600 flex items-center justify-center text-white font-black text-2xl shadow-lg shadow-indigo-100">
-            {partner.name[0]}
+          <div className="w-16 h-16 rounded-[24px] bg-indigo-600 flex items-center justify-center text-white font-black text-2xl shadow-lg shadow-indigo-100 uppercase">
+            {partner.profile_img ? <img src={partner.profile_img} className="w-full h-full object-cover rounded-[24px]" /> : partner.name[0]}
           </div>
           <div>
             <h1 className="text-2xl font-black text-slate-900 leading-tight">{partner.name}</h1>
@@ -139,8 +203,7 @@ export default function ReservationPage({ params }: { params: { slug: string } }
           </div>
         </div>
 
-        {/* 가로 날짜 선택기 */}
-        <div className="flex space-x-3 overflow-x-auto pb-4 scrollbar-hide no-scrollbar">
+        <div className="flex space-x-3 overflow-x-auto pb-4 no-scrollbar">
           {dates.map((date) => (
             <button
               key={date.toISOString()}
@@ -182,33 +245,113 @@ export default function ReservationPage({ params }: { params: { slug: string } }
               {time}
             </button>
           ))}
+          {availableSlots.length === 0 && (
+            <div className="col-span-3 py-10 text-center text-slate-300 font-bold bg-white rounded-[32px] border-2 border-dashed border-slate-100">
+              가능한 시간이 없습니다.
+            </div>
+          )}
         </div>
 
-        {/* 노쇼 방지 알림 */}
         <div className="mt-10 p-6 bg-red-50 rounded-[32px] border border-red-100 border-dashed">
           <div className="flex items-center space-x-2 mb-2">
-            <span className="text-red-500">⚠️</span>
+            <span className="text-red-500 text-lg">⚠️</span>
             <p className="text-xs font-black text-red-900 uppercase tracking-tight">No-Show Prevention</p>
           </div>
           <p className="text-[13px] text-red-700 leading-relaxed font-medium">
-            예약 후 방문하지 않으실 경우, 향후 해당 업체 및 연동된 서비스 이용이 제한될 수 있습니다. 
+            예약 후 방문하지 않으실 경우, 향후 해당 업체 및 연동된 서비스 이용이 영구 제한될 수 있습니다. 
           </p>
         </div>
       </main>
 
-      {/* 고정 하단 결제/예약 버튼 */}
       <div className="fixed bottom-0 max-w-md w-full p-6 pb-8 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent">
         <button 
+          onClick={() => setIsBookingModalOpen(true)}
           disabled={!selectedTime}
-          className={`w-full h-18 py-5 rounded-[28px] font-black text-lg shadow-2xl transition-all transform active:scale-95 ${
+          className={`w-full h-20 rounded-[32px] font-black text-xl shadow-2xl transition-all transform active:scale-95 ${
             selectedTime 
               ? "bg-slate-900 text-white shadow-slate-300" 
-              : "bg-slate-200 text-slate-400 cursor-not-allowed"
+              : "bg-slate-200 text-slate-400 cursor-not-allowed text-base font-bold"
           }`}
         >
-          {selectedTime ? `${selectedTime} 예약하기` : "시간을 선택해 주세요"}
+          {selectedTime ? `${selectedTime} 예약 고정하기` : "시간을 선택해 주세요"}
         </button>
       </div>
+
+      {/* 예약 신청 모달 */}
+      {isBookingModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-md z-50 flex items-end md:items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-[48px] p-8 shadow-2xl animate-in slide-in-from-bottom duration-300">
+            <div className="flex justify-between items-center mb-8">
+              <h3 className="text-2xl font-black text-slate-900 tracking-tight">예약자 정보 입력</h3>
+              <button onClick={() => setIsBookingModalOpen(false)} className="text-slate-300 hover:text-slate-900 transition-colors">
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            {isBlocked ? (
+              <div className="p-8 bg-red-50 rounded-[32px] border border-red-100 text-center mb-6">
+                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <span className="text-3xl">🚫</span>
+                </div>
+                <h4 className="text-xl font-black text-red-900 mb-2">예약 제한 사용자</h4>
+                <p className="text-red-600 text-sm font-bold leading-relaxed">
+                  반복적인 노쇼 이력으로 인해<br/>이 파트너에 대한 예약이 제한되었습니다.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  <input 
+                    type="text" 
+                    placeholder="예약자 성함" 
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    className="w-full p-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-black text-slate-700" 
+                  />
+                  <div className="relative">
+                    <input 
+                      type="tel" 
+                      placeholder="연락처 (숫자만)" 
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value.replace(/[^0-9]/g, ""))}
+                      className="w-full p-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-black text-slate-700" 
+                    />
+                    {isCheckingBlacklist && (
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                        <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-indigo-50/50 p-6 rounded-[28px] border border-indigo-50">
+                  <div className="flex items-start space-x-3">
+                    <input 
+                      type="checkbox" 
+                      id="antiNoShow" 
+                      checked={hasAgreedTerms}
+                      onChange={() => setHasAgreedTerms(!hasAgreedTerms)}
+                      className="mt-1.5 w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <label htmlFor="antiNoShow" className="text-sm text-slate-600 leading-snug font-bold cursor-pointer">
+                      <span className="text-indigo-600 font-black">[필수]</span> 노쇼 방지 정책 동의
+                      <p className="text-[11px] text-slate-400 mt-1 font-medium leading-relaxed">무단 예약 부도(노쇼) 시 향후 서비스 이용이 불가능해질 수 있으며, 변경 사항은 사전에 해당 업체로 연락해야 합니다.</p>
+                    </label>
+                  </div>
+                </div>
+
+                <button
+                  disabled={!customerName || customerPhone.length < 10 || !hasAgreedTerms || isSubmitLoading}
+                  onClick={handleBooking}
+                  className="w-full h-18 bg-slate-900 text-white rounded-[24px] font-black text-lg shadow-2xl active:scale-95 transition-all disabled:opacity-30 flex items-center justify-center p-4"
+                >
+                  {isSubmitLoading ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" /> : "예약 확정하기"}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

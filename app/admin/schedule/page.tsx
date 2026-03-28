@@ -1,8 +1,8 @@
 "use client";
-export const runtime = "edge";
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Plus, X, Save, Clock, Coffee, CheckCircle2, ChevronRight } from "lucide-react";
 
 type DayConfig = { id?: number; partner_id: string; day_of_week: number; start_time: string; end_time: string; interval_minutes: number; on: boolean };
@@ -41,13 +41,21 @@ export default function AdminSchedulePage() {
         }));
       }
 
-      // 2. 휴게 시간 가져오기
+      // 2. 휴게 시간 가져오기 (전체 가져온 후 UI를 위해 중복 제거 - Global 설정 방식)
       const { data: breakData } = await supabase
         .from('breaks')
         .select('*')
         .eq('partner_id', user.id);
       
-      if (breakData) setBreaks(breakData);
+      if (breakData) {
+        // 라벨, 시작시간, 종료시간이 같으면 동일한 글로벌 휴게시간으로 간주
+        const uniqueBreaks = breakData.filter((b, index, self) =>
+          index === self.findIndex((t) => (
+            t.label === b.label && t.start_time === b.start_time && t.end_time === b.end_time
+          ))
+        );
+        setBreaks(uniqueBreaks);
+      }
       
       setIsLoading(false);
     }
@@ -55,7 +63,7 @@ export default function AdminSchedulePage() {
   }, [router]);
 
   const addBreak = () => {
-    setBreaks([...breaks, { label: "식사 시간", start_time: "12:00", end_time: "13:00", day_of_week: 1 }]);
+    setBreaks([...breaks, { label: "식사 시간", start_time: "12:00", end_time: "13:00", day_of_week: 0 }]); // 기본값 0(일요일)으로 설정 (저장 시 전 요일 복제됨)
   };
 
   const removeBreak = (idx: number) => {
@@ -80,10 +88,22 @@ export default function AdminSchedulePage() {
         await supabase.from('schedules').insert(activeSchedules);
       }
 
-      // 2. 휴게 시간 동기화
+      // 2. 휴게 시간 동기화 (Global Breaks -> 모든 요일에 대해 저장)
       await supabase.from('breaks').delete().eq('partner_id', user.id);
       if (breaks.length > 0) {
-        await supabase.from('breaks').insert(breaks.map(({ id, ...rest }) => ({ ...rest, partner_id: user.id })));
+        // 중복 제거 및 모든 요일(0-6)로 복제하여 저장
+        const allDayBreaks = [];
+        for (let day = 0; day <= 6; day++) {
+          for (const b of breaks) {
+            const { id, ...rest } = b;
+            allDayBreaks.push({ 
+              ...rest, 
+              partner_id: user.id, 
+              day_of_week: day 
+            });
+          }
+        }
+        await supabase.from('breaks').insert(allDayBreaks);
       }
 
       setSaveSuccess(true);
@@ -242,29 +262,32 @@ export default function AdminSchedulePage() {
 
       <div className="fixed bottom-0 left-0 right-0 p-6 flex justify-center pointer-events-none">
         <div className="max-w-2xl w-full pointer-events-auto">
-          <button 
-            onClick={handleSave}
-            disabled={isSaving}
-            className={`w-full h-20 rounded-[32px] font-black text-xl shadow-2xl transition-all transform active:scale-95 flex items-center justify-center space-x-3 ${
-              saveSuccess 
-                ? "bg-green-500 text-white shadow-green-200" 
-                : "bg-slate-900 text-white shadow-slate-300"
-            } ${isSaving ? 'opacity-70 scale-95' : ''}`}
-          >
-            {isSaving ? (
-              <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : saveSuccess ? (
-              <>
-                <CheckCircle2 size={24} />
-                <span>성공적으로 저장됨</span>
-              </>
-            ) : (
-              <>
-                <Save size={24} />
-                <span>설정 저장하기</span>
-              </>
-            )}
-          </button>
+          {saveSuccess ? (
+            <Link 
+              href="/admin/reservations"
+              className="w-full h-20 bg-indigo-600 text-white rounded-[32px] font-black text-xl shadow-2xl flex items-center justify-center space-x-3 animate-bounce"
+            >
+              <ChevronRight size={24} />
+              <span>예약 명단 보러가기</span>
+            </Link>
+          ) : (
+            <button 
+              onClick={handleSave}
+              disabled={isSaving}
+              className={`w-full h-20 rounded-[32px] font-black text-xl shadow-2xl transition-all transform active:scale-95 flex items-center justify-center space-x-3 ${
+                isSaving ? 'bg-slate-200 text-slate-400' : 'bg-slate-900 text-white shadow-slate-300'
+              }`}
+            >
+              {isSaving ? (
+                <div className="w-6 h-6 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <Save size={24} />
+                  <span>설정 저장하기</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
     </div>

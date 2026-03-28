@@ -1,8 +1,41 @@
-export const runtime = "edge";
+"use client";
+import { useEffect, useState } from "react";
+import { supabase } from "../lib/supabase";
+import { useRouter } from "next/navigation";
 import Link from 'next/link'
 import { ArrowRight, Sparkles, Shield, Zap } from 'lucide-react'
 
 export default function LandingPage() {
+  const router = useRouter();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    async function checkUser() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        // 유저가 파트너 테이블에 있는지 확인
+        const { data: partner } = await supabase
+          .from('partners')
+          .select('slug')
+          .eq('id', session.user.id)
+          .single();
+        
+        if (partner) {
+          router.push("/admin/reservations");
+        } else {
+          // 파트너 정보가 없으면 슬러그 설정을 위해 가입 페이지로 유도
+          router.push("/signup");
+        }
+      }
+    }
+    if (mounted) checkUser();
+  }, [router, mounted]);
+
+  if (!mounted) return null;
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-900 overflow-hidden relative font-['Outfit']">
       {/* Background Decorative Blobs */}

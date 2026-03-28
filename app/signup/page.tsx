@@ -1,8 +1,8 @@
 "use client";
-export const runtime = "edge";
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
-import { Sparkles, Globe, User, Lock, ArrowRight, CheckCircle2, XCircle, Github } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Sparkles, Globe, User, Lock, ArrowRight, CheckCircle, X, Check, CheckCircle2, XCircle } from "lucide-react";
 import Link from "next/link";
 
 export default function SignupPage() {
@@ -12,10 +12,35 @@ export default function SignupPage() {
   const [isAvailable, setIsAvailable] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [mounted, setMounted] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    if (slug.length < 2) {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    async function checkExistingUser() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        setEmail(session.user.email || "");
+        // 이미 파트너 등록이 되어있는지 확인
+        const { data: partner } = await supabase
+          .from('partners')
+          .select('slug')
+          .eq('id', session.user.id)
+          .single();
+        
+        if (partner) {
+          router.push("/admin/reservations");
+        }
+      }
+    }
+    if (mounted) checkExistingUser();
+  }, [mounted, router]);
+
+  useEffect(() => {
+    if (!mounted || slug.length < 2) {
       setIsAvailable(null);
       return;
     }
@@ -41,28 +66,41 @@ export default function SignupPage() {
 
     const timer = setTimeout(checkSlug, 500);
     return () => clearTimeout(timer);
-  }, [slug]);
+  }, [slug, mounted]);
 
   const handleSignup = async () => {
-    if (!isAvailable || !email || !password) return;
+    if (!isAvailable || !email) return;
     setLoading(true);
     setErrorMsg("");
 
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email,
-      password,
-    });
+    const { data: { session } } = await supabase.auth.getSession();
+    let userId = session?.user?.id;
 
-    if (authError) {
-      setErrorMsg(authError.message);
-      setLoading(false);
-      return;
+    if (!session) {
+      // 1. 이메일/비번 가입 (세션이 없을 때만)
+      if (!password) {
+        setErrorMsg("비밀번호를 입력해주세요.");
+        setLoading(false);
+        return;
+      }
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+
+      if (authError) {
+        setErrorMsg(authError.message);
+        setLoading(false);
+        return;
+      }
+      userId = authData.user?.id;
     }
 
-    if (authData.user) {
+    if (userId) {
+      // 2. 파트너 프로필 생성
       const { error: profileError } = await supabase.from("partners").insert([
         {
-          id: authData.user.id,
+          id: userId,
           slug: slug.toLowerCase(),
           name: slug,
           is_pro: false
@@ -77,6 +115,8 @@ export default function SignupPage() {
       }
     }
   };
+
+  if (!mounted) return null;
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50 relative overflow-hidden font-['Outfit']">

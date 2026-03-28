@@ -4,7 +4,6 @@ import "./globals.css";
 
 const outfit = Outfit({ subsets: ["latin"] });
 
-export const runtime = "edge";
 
 export const metadata: Metadata = {
   title: "스마트 예약 플랫폼",
