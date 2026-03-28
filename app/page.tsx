@@ -5,6 +5,7 @@ import { supabase } from "../lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from 'next/link'
 import { ArrowRight, Sparkles, Shield, Zap } from 'lucide-react'
+import AdBanner from "../components/AdBanner";
 
 export default function LandingPage() {
   const router = useRouter();
@@ -128,6 +129,9 @@ export default function LandingPage() {
       </main>
 
       <footer className="relative z-10 max-w-7xl mx-auto px-8 pb-12 text-center text-slate-400 text-sm font-medium">
+        <div className="mb-8">
+          <AdBanner slot="landing-footer" />
+        </div>
         © 2026 Smart Reserve. All rights reserved.
       </footer>
     </div>
