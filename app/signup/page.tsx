@@ -112,7 +112,11 @@ export default function SignupPage() {
         setErrorMsg(`프로필 생성 오류: ${profileError.message}`);
         setLoading(false);
       } else {
-        router.push("/admin/schedule");
+        if (router) {
+          router.push("/admin/schedule");
+        } else {
+          window.location.href = "/admin/schedule";
+        }
       }
     }
   };

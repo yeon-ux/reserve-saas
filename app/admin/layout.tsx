@@ -6,12 +6,13 @@ import { supabase } from "../../lib/supabase";
 import { Calendar, Clock, Bell, Settings, LogOut, Users, Home, ExternalLink, Copy, Check } from "lucide-react";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
+  const [mounted, setMounted] = useState(false);
   const [slug, setSlug] = useState("");
   const [copied, setCopied] = useState(false);
   const [origin, setOrigin] = useState("");
 
   useEffect(() => {
+    setMounted(true);
     if (typeof window !== "undefined") {
       setOrigin(window.location.host);
     }
@@ -60,7 +61,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    window.location.href = "/login";
+    if (typeof window !== "undefined") window.location.href = "/login";
   };
 
   return (
@@ -73,7 +74,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
 
         <nav className="flex-1 space-y-2">
-          {navItems.map((item) => (
+          {mounted && navItems.map((item) => (
             <Link 
               key={item.href} 
               href={item.href}
@@ -87,6 +88,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <span>{item.name}</span>
             </Link>
           ))}
+          {!mounted && <div className="p-4 text-slate-300 font-bold">메뉴 로딩 중...</div>}
         </nav>
 
         {/* Share Section */}
@@ -148,7 +150,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
         {/* Mobile Sub-Nav */}
         <div className="md:hidden flex overflow-x-auto p-4 space-x-2 no-scrollbar bg-white/50 backdrop-blur-md border-b border-slate-100 sticky top-[65px] z-10">
-          {navItems.map((item) => (
+          {mounted && navItems.map((item) => (
              <Link 
                 key={item.href} 
                 href={item.href}
@@ -161,6 +163,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 {item.name}
              </Link>
           ))}
+          {!mounted && <div className="p-2 text-slate-300 text-xs font-bold">로딩 중...</div>}
         </div>
         
         <div className="p-4 md:p-8 relative z-0">{children}</div>
