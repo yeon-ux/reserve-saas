@@ -208,6 +208,8 @@ export default function ReservationPage({ params }: { params: { slug: string } }
           partner_id: partner.id,
           customer_name: customerName,
           customer_phone: customerPhone,
+          customer_memo: memo,
+          selected_service: selectedService,
           reserved_at: reservedAt,
           status: 'pending'
         }]);
@@ -343,32 +345,69 @@ export default function ReservationPage({ params }: { params: { slug: string } }
                 </p>
               </div>
             ) : (
-              <div className="space-y-6">
-                <div className="space-y-3">
-                  <input 
-                    type="text" 
-                    placeholder="예약자 성함" 
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    className="w-full p-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-black text-slate-700" 
-                  />
-                  <div className="relative">
-                    <input 
-                      type="tel" 
-                      placeholder="연락처 (숫자만)" 
-                      value={customerPhone}
-                      onChange={(e) => setCustomerPhone(e.target.value.replace(/[^0-9]/g, ""))}
-                      className="w-full p-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-black text-slate-700" 
-                    />
-                    {isCheckingBlacklist && (
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                        <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+              <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar pb-10">
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Personal Info</label>
+                    <div className="space-y-3">
+                      <input 
+                        type="text" 
+                        placeholder="예약자 성함" 
+                        value={customerName}
+                        onChange={(e) => setCustomerName(e.target.value)}
+                        className="w-full p-5 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-black text-slate-700 placeholder:text-slate-300" 
+                      />
+                      <div className="relative">
+                        <input 
+                          type="tel" 
+                          placeholder="연락처 (숫자만)" 
+                          value={customerPhone}
+                          onChange={(e) => setCustomerPhone(e.target.value.replace(/[^0-9]/g, ""))}
+                          className="w-full p-5 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-black text-slate-700 placeholder:text-slate-300" 
+                        />
+                        {isCheckingBlacklist && (
+                          <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                            <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                          </div>
+                        )}
                       </div>
-                    )}
+                    </div>
+                  </div>
+
+                  {partner.services && partner.services.length > 0 && (
+                    <div>
+                      <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1 mb-3 block">Service Selection</label>
+                      <div className="grid gap-2">
+                        {partner.services.map((s: any) => (
+                          <button
+                            key={s.id}
+                            onClick={() => setSelectedService(s.name)}
+                            className={`p-5 rounded-2xl border-2 transition-all flex justify-between items-center text-left ${
+                              selectedService === s.name 
+                                ? "bg-indigo-50 border-indigo-500 ring-4 ring-indigo-50" 
+                                : "bg-white border-slate-100 hover:border-slate-200"
+                            }`}
+                          >
+                            <span className={`font-black ${selectedService === s.name ? "text-indigo-900" : "text-slate-700"}`}>{s.name}</span>
+                            <span className="text-sm font-bold text-indigo-500">{s.price}원</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Request Memo</label>
+                    <textarea 
+                      placeholder="요청사항이나 메모를 남겨주세요 (선택)"
+                      value={memo}
+                      onChange={(e) => setMemo(e.target.value)}
+                      className="w-full p-5 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-black text-slate-700 placeholder:text-slate-300 min-h-[120px] resize-none"
+                    />
                   </div>
                 </div>
 
-                <div className="bg-indigo-50/50 p-6 rounded-[28px] border border-indigo-50">
+                <div className="bg-indigo-50/50 p-6 rounded-[32px] border border-indigo-50">
                   <div className="flex items-start space-x-3">
                     <input 
                       type="checkbox" 
@@ -385,11 +424,11 @@ export default function ReservationPage({ params }: { params: { slug: string } }
                 </div>
 
                 <button
-                  disabled={!customerName || customerPhone.length < 10 || !hasAgreedTerms || isSubmitLoading}
+                  disabled={!customerName || customerPhone.length < 10 || !hasAgreedTerms || isSubmitLoading || (partner.services?.length > 0 && !selectedService)}
                   onClick={handleBooking}
-                  className="w-full h-18 bg-slate-900 text-white rounded-[24px] font-black text-lg shadow-2xl active:scale-95 transition-all disabled:opacity-30 flex items-center justify-center p-4"
+                  className="w-full h-20 bg-slate-900 text-white rounded-[32px] font-black text-xl shadow-2xl active:scale-95 transition-all disabled:opacity-30 flex items-center justify-center p-4 sticky bottom-0"
                 >
-                  {isSubmitLoading ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" /> : "예약 확정하기"}
+                  {isSubmitLoading ? <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" /> : "예약 확정하기"}
                 </button>
               </div>
             )}
