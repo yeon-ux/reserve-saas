@@ -149,40 +149,49 @@ export default function AdminSchedulePage() {
         
         <div className="space-y-4">
           {days.map((day, idx) => (
-            <div key={day.name} className={`flex items-center justify-between p-5 rounded-3xl transition-all border ${day.on ? 'bg-indigo-50/50 border-indigo-100' : 'bg-white border-slate-100 opacity-60'}`}>
-              <div className="flex items-center space-x-5">
-                <button 
-                  onClick={() => toggleDay(idx)}
-                  className={`w-14 h-8 rounded-full p-1.5 transition-all duration-300 ${day.on ? 'bg-indigo-600 shadow-lg shadow-indigo-200' : 'bg-slate-200'}`}
-                >
-                  <div className={`w-5 h-5 bg-white rounded-full transition-all duration-300 transform ${day.on ? 'translate-x-6' : 'translate-x-0'}`} />
-                </button>
-                <span className={`text-xl font-black ${day.on ? 'text-indigo-900' : 'text-slate-400'}`}>{day.name}</span>
+            <div key={day.name} className={`flex flex-col sm:flex-row sm:items-center justify-between p-5 rounded-3xl transition-all border gap-4 ${day.on ? 'bg-indigo-50/50 border-indigo-100' : 'bg-white border-slate-100 opacity-60'}`}>
+              <div className="flex items-center justify-between sm:justify-start sm:space-x-5">
+                <div className="flex items-center space-x-5">
+                  <button 
+                    onClick={() => toggleDay(idx)}
+                    className={`w-14 h-8 rounded-full p-1.5 transition-all duration-300 ${day.on ? 'bg-indigo-600 shadow-lg shadow-indigo-200' : 'bg-slate-200'}`}
+                  >
+                    <div className={`w-5 h-5 bg-white rounded-full transition-all duration-300 transform ${day.on ? 'translate-x-6' : 'translate-x-0'}`} />
+                  </button>
+                  <span className={`text-xl font-black ${day.on ? 'text-indigo-900' : 'text-slate-400'}`}>{day.name}</span>
+                </div>
+                
+                {/* 모바일에서만 보이는 상태 표시 */}
+                {!day.on && <span className="sm:hidden text-xs font-bold text-slate-300 uppercase tracking-widest">OFF</span>}
               </div>
               
               {day.on && (
-                <div className="flex items-center space-x-3">
-                  <input 
-                    type="time" 
-                    value={day.start_time.substring(0,5)} 
-                    onChange={(e) => {
-                      const newDays = [...days];
-                      newDays[idx].start_time = e.target.value;
-                      setDays(newDays);
-                    }}
-                    className="bg-white border-none rounded-2xl p-3 text-sm font-black text-slate-700 shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
-                  />
-                  <span className="text-slate-300 font-bold">-</span>
-                  <input 
-                    type="time" 
-                    value={day.end_time.substring(0,5)} 
-                    onChange={(e) => {
-                      const newDays = [...days];
-                      newDays[idx].end_time = e.target.value;
-                      setDays(newDays);
-                    }}
-                    className="bg-white border-none rounded-2xl p-3 text-sm font-black text-slate-700 shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
-                  />
+                <div className="flex items-center justify-center sm:justify-end space-x-2 w-full sm:w-auto">
+                  <div className="flex-1 sm:flex-none">
+                    <input 
+                      type="time" 
+                      value={day.start_time.substring(0,5)} 
+                      onChange={(e) => {
+                        const newDays = [...days];
+                        newDays[idx].start_time = e.target.value;
+                        setDays(newDays);
+                      }}
+                      className="w-full bg-white border-none rounded-2xl p-3 text-sm font-black text-slate-700 shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none text-center" 
+                    />
+                  </div>
+                  <span className="text-slate-300 font-bold px-1">~</span>
+                  <div className="flex-1 sm:flex-none">
+                    <input 
+                      type="time" 
+                      value={day.end_time.substring(0,5)} 
+                      onChange={(e) => {
+                        const newDays = [...days];
+                        newDays[idx].end_time = e.target.value;
+                        setDays(newDays);
+                      }}
+                      className="w-full bg-white border-none rounded-2xl p-3 text-sm font-black text-slate-700 shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none text-center" 
+                    />
+                  </div>
                 </div>
               )}
             </div>
