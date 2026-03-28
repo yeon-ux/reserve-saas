@@ -4,32 +4,52 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, X, Save, Clock, Coffee, CheckCircle2, ChevronRight } from "lucide-react";
+import { Plus, X, Save, Clock, Coffee, CheckCircle2, ChevronRight, Settings, Calendar, Utensils, AlertCircle } from "lucide-react";
 
-type DayConfig = { id?: number; partner_id: string; day_of_week: number; start_time: string; end_time: string; interval_minutes: number; on: boolean };
+type DayConfig = { id?: number; partner_id: string; day_of_week: number; start_time: string; end_time: string; interval_minutes: number; on: boolean; max_capacity: number };
 type Break = { id?: number; start_time: string; end_time: string; label: string; day_of_week: number };
 
 const DAY_NAMES = ["일", "월", "화", "수", "목", "금", "토"];
 
 export default function AdminSchedulePage() {
+  const [activeTab, setActiveTab] = useState<'hours' | 'services' | 'exceptions'>('hours');
   const [days, setDays] = useState<(DayConfig & { name: string })[]>(
-    DAY_NAMES.map((name, idx) => ({ name, day_of_week: idx, on: false, start_time: "10:00", end_time: "22:00", interval_minutes: 60, partner_id: "" }))
+    DAY_NAMES.map((name, idx) => ({ name, day_of_week: idx, on: false, start_time: "10:00", end_time: "22:00", interval_minutes: 60, partner_id: "", max_capacity: 1 }))
   );
   const [breaks, setBreaks] = useState<Break[]>([]);
+  const [services, setServices] = useState<{ id: string, name: string, price: string }[]>([]);
+  const [exceptions, setExceptions] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    async function fetchSchedule() {
+    async function fetchData() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         router.push("/login");
         return;
       }
 
-      // 1. 운영 시간 가져오기
+      // 1. 파트너 정보 (Services) 가져오기
+      const { data: partnerData } = await supabase
+        .from('partners')
+        .select('services')
+        .eq('id', user.id)
+        .single();
+      
+      if (partnerData?.services) {
+         setServices(partnerData.services);
+      } else if (!partnerData?.services) {
+         // 기본 예시 서비스 추가 (미용실 예시)
+         setServices([
+            { id: crypto.randomUUID(), name: "커트 (일반)", price: "15,000" },
+            { id: crypto.randomUUID(), name: "펌 (일반)", price: "50,000" }
+         ]);
+      }
+
+      // 2. 운영 시간 가져오기
       const { data: scheduleData } = await supabase
         .from('schedules')
         .select('*')
@@ -42,14 +62,13 @@ export default function AdminSchedulePage() {
         }));
       }
 
-      // 2. 휴게 시간 가져오기 (전체 가져온 후 UI를 위해 중복 제거 - Global 설정 방식)
+      // 3. 휴게 시간 가져오기
       const { data: breakData } = await supabase
         .from('breaks')
         .select('*')
         .eq('partner_id', user.id);
       
       if (breakData) {
-        // 라벨, 시작시간, 종료시간이 같으면 동일한 글로벌 휴게시간으로 간주
         const uniqueBreaks = breakData.filter((b, index, self) =>
           index === self.findIndex((t) => (
             t.label === b.label && t.start_time === b.start_time && t.end_time === b.end_time
@@ -57,10 +76,17 @@ export default function AdminSchedulePage() {
         );
         setBreaks(uniqueBreaks);
       }
+
+      // 4. 예외 일정 가져오기
+      const { data: exceptionData } = await supabase
+        .from('schedule_exceptions')
+        .select('*')
+        .eq('partner_id', user.id);
+      if (exceptionData) setExceptions(exceptionData);
       
       setIsLoading(false);
     }
-    fetchSchedule();
+    fetchData();
   }, [router]);
 
   const addBreak = () => {
@@ -78,30 +104,26 @@ export default function AdminSchedulePage() {
     if (!user) return;
 
     try {
-      // 1. 운영 시간 동기화 (기존 삭제 후 활성 항목 삽입)
+      // 1. 서비스/메뉴 동기화
+      await supabase.from('partners').update({ services }).eq('id', user.id);
+
+      // 2. 운영 시간 동기화 (max_capacity 포함)
       await supabase.from('schedules').delete().eq('partner_id', user.id);
-      
       const activeSchedules = days
         .filter(d => d.on)
         .map(({ name, on, id, ...rest }) => ({ ...rest, partner_id: user.id }));
-      
       if (activeSchedules.length > 0) {
         await supabase.from('schedules').insert(activeSchedules);
       }
 
-      // 2. 휴게 시간 동기화 (Global Breaks -> 모든 요일에 대해 저장)
+      // 3. 휴게 시간 동기화
       await supabase.from('breaks').delete().eq('partner_id', user.id);
       if (breaks.length > 0) {
-        // 중복 제거 및 모든 요일(0-6)로 복제하여 저장
         const allDayBreaks = [];
         for (let day = 0; day <= 6; day++) {
           for (const b of breaks) {
             const { id, ...rest } = b;
-            allDayBreaks.push({ 
-              ...rest, 
-              partner_id: user.id, 
-              day_of_week: day 
-            });
+            allDayBreaks.push({ ...rest, partner_id: user.id, day_of_week: day });
           }
         }
         await supabase.from('breaks').insert(allDayBreaks);
@@ -130,145 +152,255 @@ export default function AdminSchedulePage() {
   );
 
   return (
-    <div className="p-6 max-w-2xl mx-auto bg-slate-50 min-h-screen pb-32">
-      <header className="mb-12 pt-8">
-        <div className="flex items-center space-x-2 text-indigo-600 font-bold text-sm mb-2 uppercase tracking-widest">
-          <Clock size={16} />
-          <span>Availability Settings</span>
+    <div className="p-6 max-w-4xl mx-auto bg-slate-50 min-h-screen pb-32 font-['Outfit']">
+      <header className="mb-12 pt-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div>
+          <div className="flex items-center space-x-2 text-indigo-600 font-bold text-sm mb-3 uppercase tracking-widest">
+            <Clock size={16} />
+            <span>Operational Management</span>
+          </div>
+          <h1 className="text-5xl font-black text-slate-900 tracking-tight">근무 및 서비스 설정</h1>
         </div>
-        <h1 className="text-4xl font-black text-slate-900 tracking-tight">운영 시간 및 휴게</h1>
-      </header>
-      
-      <section className="glass-card p-8 rounded-[40px] mb-8 relative overflow-hidden">
-        <div className="flex items-center justify-between mb-8">
-          <h2 className="text-xl font-black flex items-center">
-            <span className="w-2 h-8 bg-indigo-600 rounded-full mr-3"></span>
-            영업 요일 및 시간
-          </h2>
-        </div>
-        
-        <div className="space-y-4">
-          {days.map((day, idx) => (
-            <div key={day.name} className={`flex flex-col sm:flex-row sm:items-center justify-between p-5 rounded-3xl transition-all border gap-4 ${day.on ? 'bg-indigo-50/50 border-indigo-100' : 'bg-white border-slate-100 opacity-60'}`}>
-              <div className="flex items-center justify-between sm:justify-start sm:space-x-5">
-                <div className="flex items-center space-x-5">
-                  <button 
-                    onClick={() => toggleDay(idx)}
-                    className={`w-14 h-8 rounded-full p-1.5 transition-all duration-300 ${day.on ? 'bg-indigo-600 shadow-lg shadow-indigo-200' : 'bg-slate-200'}`}
-                  >
-                    <div className={`w-5 h-5 bg-white rounded-full transition-all duration-300 transform ${day.on ? 'translate-x-6' : 'translate-x-0'}`} />
-                  </button>
-                  <span className={`text-xl font-black ${day.on ? 'text-indigo-900' : 'text-slate-400'}`}>{day.name}</span>
-                </div>
-                
-                {/* 모바일에서만 보이는 상태 표시 */}
-                {!day.on && <span className="sm:hidden text-xs font-bold text-slate-300 uppercase tracking-widest">OFF</span>}
-              </div>
-              
-              {day.on && (
-                <div className="flex items-center justify-center sm:justify-end space-x-2 w-full sm:w-auto">
-                  <div className="flex-1 sm:flex-none">
-                    <input 
-                      type="time" 
-                      value={day.start_time.substring(0,5)} 
-                      onChange={(e) => {
-                        const newDays = [...days];
-                        newDays[idx].start_time = e.target.value;
-                        setDays(newDays);
-                      }}
-                      className="w-full bg-white border-none rounded-2xl p-3 text-sm font-black text-slate-700 shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none text-center" 
-                    />
-                  </div>
-                  <span className="text-slate-300 font-bold px-1">~</span>
-                  <div className="flex-1 sm:flex-none">
-                    <input 
-                      type="time" 
-                      value={day.end_time.substring(0,5)} 
-                      onChange={(e) => {
-                        const newDays = [...days];
-                        newDays[idx].end_time = e.target.value;
-                        setDays(newDays);
-                      }}
-                      className="w-full bg-white border-none rounded-2xl p-3 text-sm font-black text-slate-700 shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none text-center" 
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </section>
 
-      <section className="glass-card p-8 rounded-[40px] relative overflow-hidden">
-        <div className="flex justify-between items-center mb-8">
-          <h2 className="text-xl font-black flex items-center">
-            <span className="w-2 h-8 bg-orange-500 rounded-full mr-3"></span>
-            정기 휴게 시간
-          </h2>
+        <div className="flex p-1.5 bg-white border border-slate-100 rounded-[24px] shadow-sm">
           <button 
-            onClick={addBreak}
-            className="flex items-center space-x-2 bg-slate-900 text-white px-5 py-3 rounded-2xl text-sm font-black hover:scale-105 transition-all active:scale-95 shadow-lg"
+            onClick={() => setActiveTab('hours')}
+            className={`flex items-center space-x-2 px-6 py-3 rounded-[20px] text-sm font-black transition-all ${
+              activeTab === 'hours' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'
+            }`}
           >
-            <Plus size={18} />
-            <span>추가</span>
+            <Clock size={18} />
+            <span>운영 시간</span>
+          </button>
+          <button 
+            onClick={() => setActiveTab('services')}
+            className={`flex items-center space-x-2 px-6 py-3 rounded-[20px] text-sm font-black transition-all ${
+              activeTab === 'services' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            <Utensils size={18} />
+            <span>서비스 & 수용량</span>
+          </button>
+          <button 
+            onClick={() => setActiveTab('exceptions')}
+            className={`flex items-center space-x-2 px-6 py-3 rounded-[20px] text-sm font-black transition-all ${
+              activeTab === 'exceptions' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            <Calendar size={18} />
+            <span>특수 일정</span>
           </button>
         </div>
-        
-        <div className="space-y-4">
-          {breaks.map((b, i) => (
-            <div key={i} className="group flex flex-col p-6 bg-orange-50/50 rounded-3xl border border-orange-100 hover:border-orange-300 transition-all">
-              <div className="flex items-center justify-between mb-4">
-                <input 
-                  type="text" 
-                  value={b.label}
-                  onChange={(e) => {
-                    const newBreaks = [...breaks];
-                    newBreaks[i].label = e.target.value;
-                    setBreaks(newBreaks);
-                  }}
-                  placeholder="항목 예: 점심 시간"
-                  className="bg-transparent border-none outline-none font-black text-orange-900 text-lg placeholder:text-orange-200 w-full"
-                />
-                <button 
-                  onClick={() => removeBreak(i)}
-                  className="text-orange-300 hover:text-red-500 transition-colors p-1"
-                >
-                  <X size={24} />
-                </button>
-              </div>
-              <div className="flex items-center space-x-3">
-                <Coffee size={16} className="text-orange-400" />
-                <input 
-                  type="time" 
-                  value={b.start_time.substring(0,5)}
-                  onChange={(e) => {
-                    const newBreaks = [...breaks];
-                    newBreaks[i].start_time = e.target.value;
-                    setBreaks(newBreaks);
-                  }}
-                  className="bg-white border-none rounded-xl p-2 text-sm font-black text-orange-900 shadow-sm"
-                />
-                <span className="text-orange-300 font-bold">-</span>
-                <input 
-                  type="time" 
-                  value={b.end_time.substring(0,5)}
-                  onChange={(e) => {
-                    const newBreaks = [...breaks];
-                    newBreaks[i].end_time = e.target.value;
-                    setBreaks(newBreaks);
-                  }}
-                  className="bg-white border-none rounded-xl p-2 text-sm font-black text-orange-900 shadow-sm"
-                />
-              </div>
+      </header>
+
+      {activeTab === 'hours' && (
+        <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
+          <section className="glass-card p-10 rounded-[48px] shadow-2xl relative overflow-hidden bg-white">
+            <h2 className="text-2xl font-black mb-8 flex items-center">
+              <span className="w-2.5 h-10 bg-indigo-600 rounded-full mr-4"></span>
+              주간 영업 시간
+            </h2>
+            <div className="space-y-4">
+              {days.map((day, idx) => (
+                <div key={day.name} className={`flex flex-col sm:flex-row sm:items-center justify-between p-6 rounded-[32px] transition-all border gap-4 ${day.on ? 'bg-indigo-50/30 border-indigo-100' : 'bg-white border-slate-100 opacity-60'}`}>
+                  <div className="flex items-center justify-between sm:justify-start sm:space-x-6">
+                    <div className="flex items-center space-x-5">
+                      <button 
+                        onClick={() => toggleDay(idx)}
+                        className={`w-16 h-9 rounded-full p-1.5 transition-all duration-300 ${day.on ? 'bg-indigo-600 shadow-xl shadow-indigo-100' : 'bg-slate-200'}`}
+                      >
+                        <div className={`w-6 h-6 bg-white rounded-full transition-all duration-300 transform ${day.on ? 'translate-x-7' : 'translate-x-0'}`} />
+                      </button>
+                      <span className={`text-2xl font-black ${day.on ? 'text-indigo-900' : 'text-slate-400'}`}>{day.name}</span>
+                    </div>
+                    {day.on && (
+                      <div className="flex items-center space-x-2 ml-4">
+                        <User size={14} className="text-indigo-400" />
+                        <input 
+                          type="number"
+                          value={day.max_capacity}
+                          min={1}
+                          onChange={(e) => {
+                            const newDays = [...days];
+                            newDays[idx].max_capacity = parseInt(e.target.value) || 1;
+                            setDays(newDays);
+                          }}
+                          className="w-12 bg-white border border-indigo-100 rounded-xl px-2 py-1 text-sm font-black text-indigo-700 outline-none text-center"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  
+                  {day.on && (
+                    <div className="flex items-center justify-center sm:justify-end space-x-3 w-full sm:w-auto">
+                      <input 
+                        type="time" 
+                        value={day.start_time.substring(0,5)} 
+                        onChange={(e) => {
+                          const newDays = [...days];
+                          newDays[idx].start_time = e.target.value;
+                          setDays(newDays);
+                        }}
+                        className="bg-white border border-slate-100 rounded-2xl p-4 text-sm font-black text-slate-700 shadow-sm focus:ring-4 focus:ring-indigo-100 outline-none text-center" 
+                      />
+                      <span className="text-slate-300 font-black px-1">~</span>
+                      <input 
+                        type="time" 
+                        value={day.end_time.substring(0,5)} 
+                        onChange={(e) => {
+                          const newDays = [...days];
+                          newDays[idx].end_time = e.target.value;
+                          setDays(newDays);
+                        }}
+                        className="bg-white border border-slate-100 rounded-2xl p-4 text-sm font-black text-slate-700 shadow-sm focus:ring-4 focus:ring-indigo-100 outline-none text-center" 
+                      />
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
-          ))}
-          {breaks.length === 0 && (
-            <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-[32px]">
-              <p className="text-slate-400 font-bold">등록된 휴게 시간이 없습니다.</p>
+          </section>
+
+          <section className="glass-card p-10 rounded-[48px] shadow-xl relative overflow-hidden bg-white">
+            <div className="flex justify-between items-center mb-10">
+              <h2 className="text-2xl font-black flex items-center">
+                <span className="w-2.5 h-10 bg-orange-500 rounded-full mr-4"></span>
+                정기 휴게 시간 (Global)
+              </h2>
+              <button 
+                onClick={addBreak}
+                className="flex items-center space-x-2 bg-slate-900 text-white px-6 py-4 rounded-3xl text-sm font-black hover:scale-105 transition-all shadow-xl"
+              >
+                <Plus size={20} />
+                <span>추가하기</span>
+              </button>
             </div>
-          )}
+            <div className="grid sm:grid-cols-2 gap-4">
+              {breaks.map((b, i) => (
+                <div key={i} className="group p-8 bg-slate-50/50 rounded-[40px] border border-slate-100 hover:border-orange-200 transition-all relative">
+                  <div className="flex items-center justify-between mb-6">
+                    <input 
+                      type="text" 
+                      value={b.label}
+                      onChange={(e) => {
+                        const newBreaks = [...breaks];
+                        newBreaks[i].label = e.target.value;
+                        setBreaks(newBreaks);
+                      }}
+                      className="bg-transparent border-none outline-none font-black text-slate-900 text-xl w-full"
+                    />
+                    <button onClick={() => removeBreak(i)} className="text-slate-300 hover:text-red-500 transition-colors"><X size={24} /></button>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <Coffee size={18} className="text-orange-400" />
+                    <input 
+                      type="time" 
+                      value={b.start_time.substring(0,5)}
+                      onChange={(e) => {
+                        const newBreaks = [...breaks];
+                        newBreaks[i].start_time = e.target.value;
+                        setBreaks(newBreaks);
+                      }}
+                      className="bg-white border border-slate-100 rounded-2xl p-3 text-sm font-black text-slate-700 shadow-sm"
+                    />
+                    <span className="text-slate-300 font-black">~</span>
+                    <input 
+                      type="time" 
+                      value={b.end_time.substring(0,5)}
+                      onChange={(e) => {
+                        const newBreaks = [...breaks];
+                        newBreaks[i].end_time = e.target.value;
+                        setBreaks(newBreaks);
+                      }}
+                      className="bg-white border border-slate-100 rounded-2xl p-3 text-sm font-black text-slate-700 shadow-sm"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
         </div>
-      </section>
+      )}
+
+      {activeTab === 'services' && (
+        <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
+           <section className="glass-card p-10 rounded-[48px] shadow-2xl bg-white">
+              <div className="flex justify-between items-center mb-10">
+                 <div>
+                   <h2 className="text-2xl font-black flex items-center">
+                     <span className="w-2.5 h-10 bg-violet-600 rounded-full mr-4"></span>
+                     서비스 및 메뉴 관리
+                   </h2>
+                   <p className="text-slate-400 font-bold text-sm mt-1 ml-6">예약자가 선택할 수 있는 품목과 가격을 구성하세요.</p>
+                 </div>
+                 <button 
+                  onClick={() => setServices([...services, { id: crypto.randomUUID(), name: "", price: "" }])}
+                  className="bg-slate-900 text-white px-6 py-4 rounded-3xl text-sm font-black flex items-center gap-2"
+                 >
+                   <Plus size={20} />
+                   <span>메뉴 추가</span>
+                 </button>
+              </div>
+
+              <div className="grid gap-4">
+                 {services.map((s, i) => (
+                    <div key={s.id} className="flex items-center gap-4 p-6 bg-slate-50/50 rounded-[32px] border border-slate-100 group transition-all hover:bg-white hover:shadow-lg">
+                       <span className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-black text-slate-500">{i+1}</span>
+                       <input 
+                         placeholder="메뉴명 (예: 남성 컷트)" 
+                         value={s.name}
+                         onChange={(e) => {
+                           const newServices = [...services];
+                           newServices[i].name = e.target.value;
+                           setServices(newServices);
+                         }}
+                         className="flex-1 bg-transparent border-none font-black text-slate-900 outline-none p-2 text-lg"
+                       />
+                       <div className="relative">
+                          <input 
+                            placeholder="가격 (예: 15,000)" 
+                            value={s.price}
+                            onChange={(e) => {
+                              const newServices = [...services];
+                              newServices[i].price = e.target.value;
+                              setServices(newServices);
+                            }}
+                            className="w-32 bg-white border border-slate-100 rounded-2xl px-4 py-3 text-right font-black text-indigo-600 outline-none focus:ring-2 focus:ring-indigo-100"
+                          />
+                          <span className="absolute right-[-1.5rem] top-1/2 -translate-y-1/2 font-bold text-slate-300">원</span>
+                       </div>
+                       <button onClick={() => setServices(services.filter(item => item.id !== s.id))} className="ml-4 p-3 text-slate-200 hover:text-red-500 transition-all">
+                          <X size={24} />
+                       </button>
+                    </div>
+                 ))}
+                 {services.length === 0 && (
+                    <div className="text-center py-20 border-2 border-dashed border-slate-100 rounded-[40px]">
+                       <p className="text-slate-300 font-black">등록된 서비스가 없습니다.</p>
+                    </div>
+                 )}
+              </div>
+           </section>
+
+           <div className="p-8 bg-indigo-50/50 rounded-[40px] border border-indigo-100 flex items-start gap-4">
+              <AlertCircle className="text-indigo-400 shrink-0 mt-1" />
+              <div>
+                 <h4 className="font-black text-indigo-900">사용 팁</h4>
+                 <p className="text-sm text-indigo-600 font-bold leading-relaxed mt-1">기본값은 '1시간당 1명' 예약입니다. 수용 인원을 늘리면 같은 시간에 여러 명의 중복 예약을 받을 수 있습니다.</p>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {activeTab === 'exceptions' && (
+        <div className="animate-in slide-in-from-bottom-4 duration-500">
+           <section className="glass-card p-10 rounded-[48px] shadow-2xl bg-white text-center py-32">
+              <Calendar size={64} className="mx-auto text-slate-100 mb-6" />
+              <h2 className="text-2xl font-black text-slate-900">일자별 특수 일정 (준비 중)</h2>
+              <p className="text-slate-400 font-bold mt-2 max-w-sm mx-auto">특정 날짜의 주/야간 교대제나 임시 휴무를 설정하는 기능이 곧 활성화됩니다.</p>
+           </section>
+        </div>
+      )}
 
       <div className="fixed bottom-0 left-0 right-0 p-6 flex justify-center pointer-events-none">
         <div className="max-w-2xl w-full pointer-events-auto">
