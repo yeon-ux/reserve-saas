@@ -7,8 +7,7 @@ import { supabase } from "../../lib/supabase";
 import { calculateFinalSlots, WorkConfig, TimeRange, ReservationEvent } from "../../lib/filtering";
 import { format, addDays, isSameDay, getDay } from "date-fns";
 import { ko } from "date-fns/locale";
-
-import AdContainer from "../../components/AdContainer";
+import AdBanner from "../../components/AdBanner";
 
 export default function ReservationPage({ params }: { params: { slug: string } }) {
   const [partner, setPartner] = useState<any>(null);
@@ -190,8 +189,10 @@ export default function ReservationPage({ params }: { params: { slug: string } }
   const dates = Array.from({ length: 14 }).map((_, i) => addDays(new Date(), i));
 
   return (
-    <div className="max-w-md mx-auto min-h-screen bg-slate-50 relative pb-40">
-      <AdContainer partner={partner} />
+    <div className="max-w-md mx-auto min-h-screen bg-slate-50 relative pb-40 text-slate-900">
+      <div className="px-4 pt-4">
+        <AdBanner slot="booking-header" />
+      </div>
 
       <header className="p-8 pb-6 bg-white rounded-b-[48px] shadow-sm mb-6">
         <div className="flex items-center space-x-5 mb-8">
